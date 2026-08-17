@@ -1,0 +1,149 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PaymentStatus {
+  UNPAID
+  AWAITING
+  PAID
+  CASH
+}
+
+enum PaymentProvider {
+  MTN_MOMO
+  AIRTEL_MONEY
+  CASH
+}
+
+enum OrderStage {
+  COOKING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  WAITING_ON_YOU
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model Customer {
+  id        String     @id @default(cuid())
+  name      String
+  phone     String     @unique
+  createdAt DateTime   @default(now())
+  orders    Order[]
+  messages  Message[]
+}
+
+model Product {
+  id         String      @id @default(cuid())
+  name       String
+  price      Int
+  hidden     Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  orderItems OrderItem[]
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  number        Int           @unique @default(autoincrement())
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  items         OrderItem[]
+  total         Int
+  paymentStatus PaymentStatus @default(UNPAID)
+  stage         OrderStage    @default(COOKING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  payments      Payment[]
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  description String
+  quantity    Int
+  unitPrice   Int
+}
+
+model Payment {
+  id          String          @id @default(cuid())
+  orderId     String
+  order       Order           @relation(fields: [orderId], references: [id])
+  provider    PaymentProvider
+  providerRef String?
+  status      PaymentStatus
+  amount      Int
+  rawPayload  Json?
+  createdAt   DateTime        @default(now())
+}
+
+model StockItem {
+  id           String   @id @default(cuid())
+  name         String
+  quantity     Int
+  unit         String
+  lowThreshold Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
+model TeamMember {
+  id       String    @id @default(cuid())
+  name     String
+  isAi     Boolean   @default(false)
+  active   Boolean   @default(true)
+  messages Message[]
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  customerId        String
+  customer          Customer         @relation(fields: [customerId], references: [id])
+  direction         MessageDirection
+  body              String
+  whatsappMessageId String?          @unique
+  repliedById       String?
+  repliedBy         TeamMember?      @relation(fields: [repliedById], references: [id])
+  createdAt         DateTime         @default(now())
+}
+
+model BroadcastSegment {
+  id          String             @id @default(cuid())
+  name        String
+  description String
+  messages    BroadcastMessage[]
+}
+
+model BroadcastMessage {
+  id        String           @id @default(cuid())
+  segmentId String
+  segment   BroadcastSegment @relation(fields: [segmentId], references: [id])
+  body      String
+  status    String           @default("draft")
+  sentAt    DateTime?
+  createdAt DateTime         @default(now())
+}
+
+model Settings {
+  id                Int      @id @default(1)
+  currency          String   @default("₵")
+  showAiLabels      Boolean  @default(true)
+  whatsappNumber    String?
+  whatsappConnected Boolean  @default(false)
+  momoConnected     Boolean  @default(false)
+  airtelConnected   Boolean  @default(false)
+  openingHours      String?
+  languages         String?
+}

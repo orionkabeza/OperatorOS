@@ -1,0 +1,61 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: oklch(0.96 0.005 120);
+  font-family: var(--font-instrument-sans), Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: oklch(0.5 0.1 155);
+  text-decoration: none;
+}
+
+a:hover {
+  color: oklch(0.42 0.11 155);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: inherit;
+}
+
+.mono {
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.nav-btn:hover {
+  background: oklch(0.955 0.006 140);
+}
+
+.ghost-btn:hover {
+  background: oklch(0.97 0.006 120);
+}
+
+.row-btn:hover {
+  background: oklch(0.975 0.006 130);
+}
