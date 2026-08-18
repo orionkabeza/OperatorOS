@@ -21,30 +21,48 @@ const ORDER_INCLUDE = {
 
 export const VALID_PAYMENT_FILTERS = Object.keys(PAY_FILTER_MAP);
 
-async function aiRepliedForCustomer(customerId: string): Promise<boolean> {
-  const count = await prisma.message.count({
-    where: { customerId, direction: "OUTBOUND", repliedBy: { isAi: true } },
-  });
-  return count > 0;
+type OrderRow = Parameters<typeof serializeOrder>[0];
+
+function buildHistory(count: number, firstOrder: Date | null, fallback: Date): string {
+  if (count <= 1) return "First order · new customer";
+  const monthLabel = (firstOrder ?? fallback).toLocaleDateString("en-US", { month: "long" });
+  return `${count} orders since ${monthLabel} · repeat customer`;
 }
 
-async function historyForCustomer(customerId: string): Promise<string> {
-  const orders = await prisma.order.findMany({
-    where: { customerId },
-    orderBy: { createdAt: "asc" },
-    select: { createdAt: true },
-  });
-  if (orders.length <= 1) return "First order · new customer";
-  const monthLabel = orders[0].createdAt.toLocaleDateString("en-US", { month: "long" });
-  return `${orders.length} orders since ${monthLabel} · repeat customer`;
-}
+/**
+ * Decorate a batch of orders with per-customer facts (AI-replied badge, order
+ * history) using a fixed 2 queries for the whole batch instead of 2 per order
+ * — the previous per-order fan-out could open hundreds of concurrent queries
+ * and exhaust the shared connection pool.
+ */
+async function decorateMany(orders: OrderRow[]): Promise<OrderDTO[]> {
+  if (orders.length === 0) return [];
+  const customerIds = [...new Set(orders.map((o) => o.customerId))];
 
-async function decorate(order: Parameters<typeof serializeOrder>[0]): Promise<OrderDTO> {
-  const [aiReplied, history] = await Promise.all([
-    aiRepliedForCustomer(order.customerId),
-    historyForCustomer(order.customerId),
+  const [aiRows, grouped] = await Promise.all([
+    prisma.message.findMany({
+      where: { customerId: { in: customerIds }, direction: "OUTBOUND", repliedBy: { isAi: true } },
+      select: { customerId: true },
+      distinct: ["customerId"],
+    }),
+    prisma.order.groupBy({
+      by: ["customerId"],
+      where: { customerId: { in: customerIds } },
+      _count: { _all: true },
+      _min: { createdAt: true },
+    }),
   ]);
-  return serializeOrder(order, { aiReplied, history });
+
+  const aiSet = new Set(aiRows.map((r) => r.customerId));
+  const histMap = new Map(grouped.map((g) => [g.customerId, { count: g._count._all, first: g._min.createdAt }]));
+
+  return orders.map((o) => {
+    const h = histMap.get(o.customerId);
+    return serializeOrder(o, {
+      aiReplied: aiSet.has(o.customerId),
+      history: buildHistory(h?.count ?? 1, h?.first ?? null, o.createdAt),
+    });
+  });
 }
 
 export async function listOrders(paymentFilter?: string): Promise<OrderDTO[]> {
@@ -54,13 +72,13 @@ export async function listOrders(paymentFilter?: string): Promise<OrderDTO[]> {
     include: ORDER_INCLUDE,
     orderBy: { createdAt: "desc" },
   });
-  return Promise.all(orders.map(decorate));
+  return decorateMany(orders);
 }
 
 export async function getOrderDTO(id: string): Promise<OrderDTO | null> {
   const order = await prisma.order.findUnique({ where: { id }, include: ORDER_INCLUDE });
   if (!order) return null;
-  return decorate(order);
+  return (await decorateMany([order]))[0] ?? null;
 }
 
 export async function markOrderDelivered(id: string): Promise<OrderDTO | null> {
