@@ -236,7 +236,7 @@ export default function OrdersView({
           alignSelf: "stretch",
         }}
       >
-        <OrderDetailSheet order={selected} cur={cur} onChanged={onOrderChanged} />
+        <OrderDetailSheet key={selected?.id ?? "none"} order={selected} cur={cur} onChanged={onOrderChanged} />
       </div>
     </div>
   );

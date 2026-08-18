@@ -55,11 +55,15 @@ export function serializeOrder(order: OrderWithRelations, opts?: { aiReplied?: b
 }
 
 export function serializeCustomer(customer: CustomerWithOrders): CustomerRow {
+  // Only count money actually received — an UNPAID/AWAITING order isn't spend.
+  const paidStatuses: ReadonlySet<string> = new Set(["PAID", "CASH"]);
   return {
     id: customer.id,
     name: customer.name,
     phone: customer.phone,
     orderCount: customer.orders.length,
-    totalSpend: customer.orders.reduce((sum, o) => sum + o.total, 0),
+    totalSpend: customer.orders
+      .filter((o) => paidStatuses.has(o.paymentStatus))
+      .reduce((sum, o) => sum + o.total, 0),
   };
 }

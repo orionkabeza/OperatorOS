@@ -14,9 +14,10 @@ export async function GET(request: NextRequest) {
       return new NextResponse(result, { status: 200 });
     }
     return NextResponse.json({ error: "Verification failed" }, { status: 403 });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "WhatsApp is not configured";
-    return NextResponse.json({ error: message }, { status: 501 });
+  } catch {
+    // Don't disclose which env var is unset to an unauthenticated caller.
+    console.error("[whatsapp] verification hit but WHATSAPP_VERIFY_TOKEN is unset");
+    return NextResponse.json({ error: "Not configured" }, { status: 503 });
   }
 }
 
@@ -29,18 +30,31 @@ export async function POST(request: NextRequest) {
     if (!verifyWebhookSignature(rawBody, signature)) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "WhatsApp is not configured";
-    return NextResponse.json({ error: message }, { status: 501 });
+  } catch {
+    console.error("[whatsapp] webhook hit but WHATSAPP_APP_SECRET is unset");
+    return NextResponse.json({ error: "Not configured" }, { status: 503 });
   }
 
-  const payload = JSON.parse(rawBody);
-  const { messages } = parseInboundWebhook(payload);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
+  const { messages } = parseInboundWebhook(payload as Parameters<typeof parseInboundWebhook>[0]);
+
+  // Persist each message independently: one bad/duplicate row must not drop
+  // the rest of the batch. Meta redelivers on non-200 and batches multiple
+  // messages per delivery, so we always ack 200 and swallow per-message errors
+  // (duplicate whatsappMessageId is expected on redelivery).
   for (const message of messages) {
-    await recordInboundWhatsAppMessage(message);
+    try {
+      await recordInboundWhatsAppMessage(message);
+    } catch (err) {
+      console.error("[whatsapp] failed to record message", message.whatsappMessageId, err);
+    }
   }
 
-  // Meta requires a fast 200 ack regardless of downstream processing outcome.
   return NextResponse.json({ received: true });
 }

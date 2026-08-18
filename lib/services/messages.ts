@@ -12,13 +12,17 @@ import { findOrCreateCustomerByPhone } from "./customers";
  */
 export async function recordInboundWhatsAppMessage(msg: InboundWhatsAppMessage) {
   const customer = await findOrCreateCustomerByPhone(msg.from, msg.contactName);
+  // Meta timestamps are unix seconds as a string; fall back to now if absent
+  // or unparseable rather than writing an Invalid Date (which Prisma rejects).
+  const ts = Number(msg.timestamp);
+  const createdAt = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000) : new Date();
   return prisma.message.create({
     data: {
       customerId: customer.id,
       direction: "INBOUND",
       body: msg.body,
       whatsappMessageId: msg.whatsappMessageId,
-      createdAt: new Date(Number(msg.timestamp) * 1000),
+      createdAt,
     },
   });
 }

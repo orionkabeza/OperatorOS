@@ -100,7 +100,9 @@ export async function requestToPay(input: RequestToPayInput): Promise<{ referenc
     },
     body: JSON.stringify({
       amount: String(input.amount),
-      currency: input.currency ?? "EUR", // MTN sandbox only accepts EUR; use your real currency in production
+      // Caller supplies the store's real currency (MOMO_CURRENCY, default GHS).
+      // Note: MTN's *sandbox* only accepts "EUR" — set MOMO_CURRENCY=EUR there.
+      currency: input.currency ?? "GHS",
       externalId: input.externalId,
       payer: { partyIdType: "MSISDN", partyId: toMsisdn(input.payerPhone) },
       payerMessage: input.payerMessage,

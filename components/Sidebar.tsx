@@ -4,13 +4,12 @@ interface NavItem {
   key: NavKey;
   label: string;
   icon: string;
-  badge?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { key: "today", label: "Today", icon: "◉" },
-  { key: "orders", label: "Orders & payments", icon: "▤", badge: "5" },
-  { key: "stock", label: "Stock", icon: "▦", badge: "3" },
+  { key: "orders", label: "Orders & payments", icon: "▤" },
+  { key: "stock", label: "Stock", icon: "▦" },
   { key: "team", label: "Team", icon: "◍" },
   { key: "customers", label: "Customers", icon: "☺" },
   { key: "catalog", label: "Catalog", icon: "▧" },
@@ -22,9 +21,17 @@ interface SidebarProps {
   tab: NavKey;
   onNavigate: (tab: NavKey) => void;
   moneyIn: string;
+  ordersBadge: number;
+  stockBadge: number;
+  whatsappConnected: boolean;
 }
 
-export default function Sidebar({ tab, onNavigate, moneyIn }: SidebarProps) {
+export default function Sidebar({ tab, onNavigate, moneyIn, ordersBadge, stockBadge, whatsappConnected }: SidebarProps) {
+  const badgeFor = (key: NavKey): string | undefined => {
+    if (key === "orders" && ordersBadge > 0) return String(ordersBadge);
+    if (key === "stock" && stockBadge > 0) return String(stockBadge);
+    return undefined;
+  };
   return (
     <div
       style={{
@@ -84,11 +91,11 @@ export default function Sidebar({ tab, onNavigate, moneyIn }: SidebarProps) {
                 width: 6,
                 height: 6,
                 borderRadius: "50%",
-                background: "oklch(0.52 0.11 155)",
-                animation: "pulseDot 2.4s ease-in-out infinite",
+                background: whatsappConnected ? "oklch(0.52 0.11 155)" : "oklch(0.6 0.01 150)",
+                animation: whatsappConnected ? "pulseDot 2.4s ease-in-out infinite" : "none",
               }}
             />
-            WhatsApp connected
+            {whatsappConnected ? "WhatsApp connected" : "WhatsApp not connected"}
           </div>
         </div>
       </div>
@@ -115,7 +122,7 @@ export default function Sidebar({ tab, onNavigate, moneyIn }: SidebarProps) {
             >
               <span style={{ width: 18, textAlign: "center", fontSize: 15 }}>{n.icon}</span>
               <span style={{ flex: 1 }}>{n.label}</span>
-              {n.badge ? (
+              {badgeFor(n.key) ? (
                 <span
                   className="mono"
                   style={{
@@ -126,7 +133,7 @@ export default function Sidebar({ tab, onNavigate, moneyIn }: SidebarProps) {
                     color: "oklch(0.45 0.09 60)",
                   }}
                 >
-                  {n.badge}
+                  {badgeFor(n.key)}
                 </span>
               ) : null}
             </button>
@@ -149,12 +156,17 @@ export default function Sidebar({ tab, onNavigate, moneyIn }: SidebarProps) {
         >
           {moneyIn}
         </div>
-        <div style={{ fontSize: 12, color: "oklch(0.5 0.09 155)", marginTop: 3 }}>MoMo confirmed</div>
+        <div style={{ fontSize: 12, color: "oklch(0.5 0.09 155)", marginTop: 3 }}>Confirmed payments</div>
       </div>
 
       <button
         onClick={async () => {
-          await fetch("/api/auth/logout", { method: "POST" });
+          try {
+            await fetch("/api/auth/logout", { method: "POST" });
+          } catch {
+            // Navigate to /login regardless; the cookie is httpOnly so the
+            // server clears it, and /login is the right place to land.
+          }
           window.location.href = "/login";
         }}
         className="ghost-btn"

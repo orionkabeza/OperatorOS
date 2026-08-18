@@ -1,9 +1,10 @@
 import { prisma } from "../db";
 
 export async function getSettings() {
-  const existing = await prisma.settings.findUnique({ where: { id: 1 } });
-  if (existing) return existing;
-  return prisma.settings.create({ data: { id: 1 } });
+  // Upsert rather than find-then-create: two servers hitting a fresh DB
+  // simultaneously would both see null and both insert id=1, one hitting a
+  // unique-constraint 500. Upsert collapses that race.
+  return prisma.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
 }
 
 export async function updateSettings(patch: {
@@ -12,6 +13,5 @@ export async function updateSettings(patch: {
   openingHours?: string;
   languages?: string;
 }) {
-  await getSettings();
-  return prisma.settings.update({ where: { id: 1 }, data: patch });
+  return prisma.settings.upsert({ where: { id: 1 }, create: { id: 1, ...patch }, update: patch });
 }

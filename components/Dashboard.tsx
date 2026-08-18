@@ -51,29 +51,59 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
-    try {
-      const [orders, stock, team, customers, products, segments, settings, summary] = await Promise.all([
-        api.orders(),
-        api.stock(),
-        api.team(),
-        api.customers(),
-        api.catalog(),
-        api.broadcasts(),
-        api.settings(),
-        api.summary(),
-      ]);
-      setData({ orders, stock, team, customers, products, segments, settings, summary });
-      setError(null);
-      setOpenId((current) => current ?? orders[0]?.id ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load dashboard data");
-    } finally {
+    // allSettled so one dead endpoint degrades one panel instead of taking
+    // down the whole dashboard. Only a total failure (every request failed)
+    // surfaces the full-screen error.
+    const [orders, stock, team, customers, products, segments, settings, summary] = await Promise.allSettled([
+      api.orders(),
+      api.stock(),
+      api.team(),
+      api.customers(),
+      api.catalog(),
+      api.broadcasts(),
+      api.settings(),
+      api.summary(),
+    ]);
+
+    const results = [orders, stock, team, customers, products, segments, settings, summary];
+    const allFailed = results.every((r) => r.status === "rejected");
+    if (allFailed) {
+      const first = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      setError(first?.reason instanceof Error ? first.reason.message : "Failed to load dashboard data");
       setLoading(false);
+      return;
     }
+
+    setData((prev) => ({
+      orders: orders.status === "fulfilled" ? orders.value : prev.orders,
+      stock: stock.status === "fulfilled" ? stock.value : prev.stock,
+      team: team.status === "fulfilled" ? team.value : prev.team,
+      customers: customers.status === "fulfilled" ? customers.value : prev.customers,
+      products: products.status === "fulfilled" ? products.value : prev.products,
+      segments: segments.status === "fulfilled" ? segments.value : prev.segments,
+      settings: settings.status === "fulfilled" ? settings.value : prev.settings,
+      summary: summary.status === "fulfilled" ? summary.value : prev.summary,
+    }));
+    if (orders.status === "fulfilled") {
+      setOpenId((current) => current ?? orders.value[0]?.id ?? null);
+    }
+    setError(null);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
     loadAll();
+    // Refresh periodically and when the tab regains focus, so a dashboard left
+    // open all day doesn't show stale morning data.
+    const interval = setInterval(loadAll, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadAll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [loadAll]);
 
   const refreshOrders = useCallback(async () => {
@@ -106,7 +136,7 @@ export default function Dashboard() {
     today: ["Today", data.summary ? `${data.summary.ordersToday} orders today · ${data.summary.stillCooking} still cooking` : ""],
     orders: [
       "Orders & payments",
-      data.summary ? `${data.orders.length} orders today · ${cur(data.summary.unpaidTotal)} not yet paid` : "",
+      data.summary ? `${data.summary.ordersToday} orders today · ${cur(data.summary.unpaidTotal)} not yet paid` : "",
     ],
   };
   const [pageTitle, pageSub] = titles[tab] ?? [stub?.title ?? "", stub?.sub ?? ""];
@@ -124,7 +154,25 @@ export default function Dashboard() {
       <div style={{ display: "grid", placeItems: "center", minHeight: "100vh", padding: 24 }}>
         <div style={{ maxWidth: 480, textAlign: "center" }}>
           <div style={{ fontSize: 16, fontWeight: 650, marginBottom: 8 }}>Couldn&apos;t load the dashboard</div>
-          <div style={{ fontSize: 14, color: "oklch(0.5 0.01 150)" }}>{error}</div>
+          <div style={{ fontSize: 14, color: "oklch(0.5 0.01 150)", marginBottom: 16 }}>{error}</div>
+          <button
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              loadAll();
+            }}
+            style={{
+              minHeight: 42,
+              padding: "0 20px",
+              borderRadius: 12,
+              background: "oklch(0.52 0.11 155)",
+              color: "oklch(0.99 0.01 155)",
+              fontSize: 14,
+              fontWeight: 620,
+            }}
+          >
+            Try again
+          </button>
         </div>
       </div>
     );
@@ -140,7 +188,14 @@ export default function Dashboard() {
         color: "oklch(0.24 0.012 150)",
       }}
     >
-      <Sidebar tab={tab} onNavigate={go} moneyIn={cur(data.summary?.moneyInToday ?? 0)} />
+      <Sidebar
+        tab={tab}
+        onNavigate={go}
+        moneyIn={cur(data.summary?.moneyInToday ?? 0)}
+        ordersBadge={data.summary?.unpaidCount ?? 0}
+        stockBadge={data.summary?.lowStockCount ?? 0}
+        whatsappConnected={data.settings?.whatsappConnected ?? false}
+      />
 
       <div style={{ minWidth: 0 }}>
         <Header pageTitle={pageTitle} pageSub={pageSub} />

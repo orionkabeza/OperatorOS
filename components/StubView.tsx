@@ -40,18 +40,6 @@ export default function StubView({ stub }: StubViewProps) {
           </div>
         ))}
       </div>
-      <div
-        style={{
-          marginTop: 14,
-          padding: "14px 16px",
-          border: "1px dashed oklch(0.85 0.01 120)",
-          borderRadius: 18,
-          fontSize: 13,
-          color: "oklch(0.55 0.01 150)",
-        }}
-      >
-        Sketch only — this screen comes after the first release.
-      </div>
     </div>
   );
 }

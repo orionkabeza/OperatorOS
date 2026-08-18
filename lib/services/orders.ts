@@ -1,5 +1,5 @@
 import { prisma } from "../db";
-import type { PaymentStatus as DbPaymentStatus } from "../generated/prisma/client";
+import { Prisma, type PaymentStatus as DbPaymentStatus } from "../generated/prisma/client";
 import { serializeOrder } from "../serialize";
 import type { Order as OrderDTO } from "../types";
 
@@ -10,7 +10,16 @@ const PAY_FILTER_MAP: Record<string, DbPaymentStatus> = {
   cash: "CASH",
 };
 
-const ORDER_INCLUDE = { customer: true, items: true, payments: true } as const;
+// Payments ordered deterministically (oldest→newest) so serializeOrder's
+// "last element = latest payment" holds identically on both servers, instead
+// of relying on planner-dependent row order.
+const ORDER_INCLUDE = {
+  customer: true,
+  items: true,
+  payments: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+} satisfies Prisma.OrderInclude;
+
+export const VALID_PAYMENT_FILTERS = Object.keys(PAY_FILTER_MAP);
 
 async function aiRepliedForCustomer(customerId: string): Promise<boolean> {
   const count = await prisma.message.count({
@@ -60,12 +69,22 @@ export async function markOrderDelivered(id: string): Promise<OrderDTO | null> {
 }
 
 export async function confirmOrderPaymentManually(id: string): Promise<OrderDTO | null> {
-  const order = await prisma.order.findUniqueOrThrow({ where: { id } });
-  await prisma.$transaction([
-    prisma.order.update({ where: { id }, data: { paymentStatus: "PAID" } }),
-    prisma.payment.create({
-      data: { orderId: id, provider: "CASH", status: "PAID", amount: order.total },
-    }),
-  ]);
+  // Idempotent + atomic: flip the order to PAID only if it isn't already, and
+  // create the CASH payment row only when that flip actually happened. A
+  // double-tap or LB retry lands the second call with the order already PAID,
+  // so updateMany reports 0 rows and no duplicate payment is written (which
+  // would otherwise double-count "Money in today").
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.order.updateMany({
+      where: { id, paymentStatus: { not: "PAID" } },
+      data: { paymentStatus: "PAID" },
+    });
+    if (updated.count === 1) {
+      const order = await tx.order.findUniqueOrThrow({ where: { id }, select: { total: true } });
+      await tx.payment.create({
+        data: { orderId: id, provider: "CASH", status: "PAID", amount: order.total },
+      });
+    }
+  });
   return getOrderDTO(id);
 }

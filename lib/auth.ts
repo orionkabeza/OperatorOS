@@ -5,7 +5,7 @@
  */
 
 export const SESSION_COOKIE = "operatoros_session";
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function getAuthSecret(): string {
   const secret = process.env.AUTH_SECRET;
@@ -37,21 +37,41 @@ async function hmacHex(secret: string, data: string): Promise<string> {
   return bufferToHex(signature);
 }
 
-/** Manual constant-time comparison — Web Crypto has no timingSafeEqual. */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+async function sha256Hex(data: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
+  return bufferToHex(digest);
+}
+
+/**
+ * Constant-time string comparison. Both inputs are SHA-256'd first so the
+ * comparison always runs over equal-length (64-hex-char) digests — this
+ * removes the length-based early return that would otherwise leak, via
+ * timing, whether a guess had the correct length.
+ */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const [ah, bh] = await Promise.all([sha256Hex(a), sha256Hex(b)]);
   let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < ah.length; i++) diff |= ah.charCodeAt(i) ^ bh.charCodeAt(i);
   return diff === 0;
 }
 
-export function verifyOwnerPassword(password: string): boolean {
+export async function verifyOwnerPassword(password: string): Promise<boolean> {
   return timingSafeEqual(password, getOwnerPassword());
+}
+
+/**
+ * Session tokens bind to the current password (via a hash of it mixed into
+ * the signature), so rotating OWNER_PASSWORD invalidates every existing
+ * session — the intuitive "change the password to lock everyone out" works.
+ */
+async function passwordFingerprint(): Promise<string> {
+  return sha256Hex(getOwnerPassword());
 }
 
 export async function createSessionToken(): Promise<string> {
   const expiresAt = Date.now() + SESSION_TTL_MS;
-  const signature = await hmacHex(getAuthSecret(), String(expiresAt));
+  const fp = await passwordFingerprint();
+  const signature = await hmacHex(getAuthSecret(), `${expiresAt}.${fp}`);
   return `${expiresAt}.${signature}`;
 }
 
@@ -64,7 +84,8 @@ export async function verifySessionToken(token: string | undefined): Promise<boo
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return false;
 
   try {
-    const expected = await hmacHex(getAuthSecret(), expiresAtStr);
+    const fp = await passwordFingerprint();
+    const expected = await hmacHex(getAuthSecret(), `${expiresAtStr}.${fp}`);
     return timingSafeEqual(expected, signature);
   } catch {
     return false;
