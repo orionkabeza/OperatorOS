@@ -1,0 +1,42 @@
+name: Deploy OperatorOS
+
+# Deploys to both web servers on every push to main. The deploy itself runs
+# server-side (git pull + build + migrate + restart) via a dedicated SSH key
+# that is locked to a single forced command on each box, so this workflow can
+# only ever trigger a deploy — it can't get a shell or read anything back.
+#
+# Required repo secret (Settings -> Secrets and variables -> Actions):
+#   OPERATOROS_DEPLOY_KEY  = the PRIVATE half of the operatoros_deploy_key pair
+#
+# The matching public key is already installed in ubuntu@<box>:~/.ssh/authorized_keys
+# with command="/opt/deploy-operatoros.sh" on both servers.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-operatoros
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host: ["13.221.233.147", "98.94.31.189"]
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.OPERATOROS_DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 15 "${{ matrix.host }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to ${{ matrix.host }}
+        run: |
+          # The key is forced to /opt/deploy-operatoros.sh server-side, so the
+          # requested command is ignored — this just triggers the deploy.
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=20 "ubuntu@${{ matrix.host }}"
