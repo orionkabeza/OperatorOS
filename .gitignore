@@ -9,3 +9,4 @@ npm-debug.log*
 next-env.d.ts
 
 /lib/generated/prisma
+_verify.mjs
