@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#EDEFE9;}
+  *{box-sizing:border-box;}
+  a{color:#12171A;text-decoration:none;}
+  a:hover{color:#5C686E;}
+  ::selection{background:#F2B705;color:#12171A;}
+  button:focus-visible,input:focus-visible,select:focus-visible,div:focus-visible{outline:2px solid #F2B705;outline-offset:1px;}
+  input,select,button{font-family:'Public Sans',sans-serif;}
+  @keyframes drawerIn{from{transform:translateX(24px);opacity:0}to{transform:translateX(0);opacity:1}}
+</style>
+</helmet>
+
+<div style="display:flex;min-height:100vh;background:#EDEFE9;font-family:'Public Sans',sans-serif;color:#12171A;-webkit-font-smoothing:antialiased;">
+
+  <div style="width:214px;flex:0 0 214px;background:#2B373D;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="padding:16px 16px 14px;border-bottom:1px solid rgba(255,255,255,0.08);">
+      <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:17px;letter-spacing:0.06em;color:#FAFBF7;">OPERATOR<span style="color:#F2B705;">OS</span></div>
+      <div style="font-size:11px;color:#8E9BA0;margin-top:3px;letter-spacing:0.02em;">Gasabo Hardware &amp; Supply</div>
+    </div>
+    <div style="padding:14px 0 6px;">
+      <div style="font-size:9.5px;letter-spacing:0.16em;color:#6F7D83;padding:0 16px 8px;font-weight:600;">ROOMS</div>
+      <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="7">
+        <div onClick="{{ r.open }}" role="button" tabindex="0" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;border-left:3px solid {{ r.mark }};background:{{ r.bg }};color:{{ r.fg }};cursor:pointer;font-size:13.5px;font-weight:{{ r.weight }};letter-spacing:0.01em;" style-hover="background:#1B2427;color:#FAFBF7;">
+          <span>{{ r.label }}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:{{ r.badgeFg }};background:{{ r.badgeBg }};padding:1px 5px;border-radius:2px;">{{ r.badge }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin-top:auto;padding:14px 16px 18px;border-top:1px solid rgba(255,255,255,0.08);">
+      <div role="button" tabindex="0" style="border:1px solid #4A585E;border-radius:2px;padding:10px 12px;text-align:center;font-size:12.5px;font-weight:600;letter-spacing:0.08em;color:#C6CFD2;cursor:pointer;" style-hover="border-color:#F2B705;color:#F2B705;">CLOSE THE SHOP</div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+
+    <div style="height:54px;background:#2B373D;display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:30;">
+      <div style="display:flex;align-items:baseline;gap:12px;">
+        <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:16px;letter-spacing:0.1em;color:#FAFBF7;text-transform:uppercase;">{{ roomTitle }}</div>
+        <div style="font-size:11.5px;color:#8E9BA0;">{{ roomSub }}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:18px;">
+        <div style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:#C6CFD2;">
+          <span style="width:7px;height:7px;background:#1F6F4A;border-radius:50%;display:inline-block;"></span>Shop open since 07:12
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8E9BA0;">Wed 19 Aug · 14:38</div>
+        <div style="display:flex;align-items:center;gap:8px;padding-left:18px;border-left:1px solid rgba(255,255,255,0.12);">
+          <div style="width:26px;height:26px;background:#F2B705;color:#12171A;display:grid;place-items:center;font-family:Archivo,sans-serif;font-weight:700;font-size:11px;border-radius:2px;">AM</div>
+          <div style="font-size:12px;color:#FAFBF7;">Alphonse M. <span style="color:#8E9BA0;">· Manager</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#1B2427;display:flex;align-items:stretch;padding:0 20px;position:sticky;top:54px;z-index:29;overflow-x:auto;">
+      <sc-for list="{{ tally }}" as="t" hint-placeholder-count="4">
+        <div style="padding:11px 22px 0 0;margin-right:22px;border-right:1px solid rgba(255,255,255,0.09);flex:1 1 0;min-width:118px;">
+          <div style="font-size:9.5px;letter-spacing:0.15em;color:#7E8C92;font-weight:600;">{{ t.label }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:clamp(16px,1.5vw,21px);font-weight:500;color:{{ t.fg }};margin-top:3px;line-height:1.1;white-space:nowrap;">{{ t.value }}</div>
+          <div style="height:3px;margin-top:8px;background:{{ t.mark }};"></div>
+        </div>
+      </sc-for>
+      <div style="margin-left:auto;align-self:center;font-size:11px;color:#6F7D83;letter-spacing:0.04em;white-space:nowrap;flex:0 0 auto;">live · 14:38</div>
+    </div>
+
+    <div style="padding:20px 20px 40px;position:relative;">
+
+      <sc-if value="{{ isDebt }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="Debt Book">
+
+          <div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;">
+            <div>
+              <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:26px;letter-spacing:0.01em;">The Debt Book</div>
+              <div style="font-size:12.5px;color:#5C686E;margin-top:2px;">42 accounts on credit · 9 need chasing today</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <div role="button" tabindex="0" style="border:1px solid #D3D8CF;background:#FAFBF7;border-radius:2px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.07);" style-hover="border-color:#5C686E;">Export ageing</div>
+              <div role="button" tabindex="0" style="border:1px solid #D3D8CF;background:#FAFBF7;border-radius:2px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.07);" style-hover="border-color:#5C686E;">Send today's reminders (9)</div>
+              <div role="button" tabindex="0" style="background:#F2B705;border:1px solid #D19E04;border-radius:2px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.12);" style-hover="background:#FFC61A;">Record a payment</div>
+            </div>
+          </div>
+
+          <div style="background:#2B373D;border-radius:2px;padding:0;margin-bottom:16px;box-shadow:3px 3px 0 rgba(27,36,39,0.14);">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));">
+              <div style="padding:16px 20px;border-right:1px solid rgba(255,255,255,0.09);">
+                <div style="font-size:10px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">OWED TO YOU</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:clamp(21px,2vw,30px);color:#FAFBF7;margin-top:6px;letter-spacing:-0.01em;white-space:nowrap;">RWF 12,480,500</div>
+                <div style="font-size:11.5px;color:#8E9BA0;margin-top:5px;">across 42 accounts</div>
+              </div>
+              <div style="padding:16px 20px;border-right:1px solid rgba(255,255,255,0.09);">
+                <div style="font-size:10px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">OVERDUE</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:clamp(21px,2vw,30px);color:#E38A78;margin-top:6px;letter-spacing:-0.01em;white-space:nowrap;">RWF 3,905,000</div>
+                <div style="font-size:11.5px;color:#8E9BA0;margin-top:5px;">9 accounts · oldest 94 days</div>
+              </div>
+              <div style="padding:16px 20px;border-right:1px solid rgba(255,255,255,0.09);">
+                <div style="font-size:10px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">DUE THIS WEEK</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:clamp(21px,2vw,30px);color:#E8C56B;margin-top:6px;letter-spacing:-0.01em;white-space:nowrap;">RWF 2,140,000</div>
+                <div style="font-size:11.5px;color:#8E9BA0;margin-top:5px;">6 invoices · Fri is heaviest</div>
+              </div>
+              <div style="padding:16px 20px;">
+                <div style="font-size:10px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">COLLECTED THIS MONTH</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:clamp(21px,2vw,30px);color:#6FBF95;margin-top:6px;letter-spacing:-0.01em;white-space:nowrap;">RWF 8,620,000</div>
+                <div style="font-size:11.5px;color:#8E9BA0;margin-top:5px;">72% of the month's credit sales</div>
+              </div>
+            </div>
+            <div style="padding:14px 20px 18px;border-top:1px solid rgba(255,255,255,0.09);">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+                <div style="font-size:10px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">AGEING OF WHAT YOU'RE OWED</div>
+                <div style="font-size:11px;color:#8E9BA0;">by days since invoice date</div>
+              </div>
+              <div style="display:flex;height:26px;border-radius:2px;overflow:hidden;">
+                <div style="width:51.6%;background:#1F6F4A;"></div>
+                <div style="width:17.1%;background:rgba(138,106,23,0.72);"></div>
+                <div style="width:11.9%;background:#8A6A17;"></div>
+                <div style="width:10.6%;background:rgba(179,64,46,0.78);"></div>
+                <div style="width:8.8%;background:#B3402E;"></div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:11px;">
+                <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+                  <span style="width:9px;height:9px;background:#1F6F4A;flex:0 0 9px;"></span>
+                  <span style="font-size:10.5px;color:#8E9BA0;letter-spacing:0.1em;">CURRENT</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#C6CFD2;white-space:nowrap;">6,435,000</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+                  <span style="width:9px;height:9px;background:rgba(138,106,23,0.72);flex:0 0 9px;"></span>
+                  <span style="font-size:10.5px;color:#8E9BA0;letter-spacing:0.1em;">1–30</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#C6CFD2;white-space:nowrap;">2,140,500</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+                  <span style="width:9px;height:9px;background:#8A6A17;flex:0 0 9px;"></span>
+                  <span style="font-size:10.5px;color:#8E9BA0;letter-spacing:0.1em;">31–60</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#C6CFD2;white-space:nowrap;">1,480,000</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+                  <span style="width:9px;height:9px;background:rgba(179,64,46,0.78);flex:0 0 9px;"></span>
+                  <span style="font-size:10.5px;color:#8E9BA0;letter-spacing:0.1em;">61–90</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#C6CFD2;white-space:nowrap;">1,320,000</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+                  <span style="width:9px;height:9px;background:#B3402E;flex:0 0 9px;"></span>
+                  <span style="font-size:10.5px;color:#8E9BA0;letter-spacing:0.1em;">90+</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#E38A78;white-space:nowrap;">1,105,000</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+            <sc-for list="{{ debtFilters }}" as="f" hint-placeholder-count="5">
+              <div onClick="{{ f.open }}" role="button" tabindex="0" style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};border-radius:2px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;display:flex;gap:7px;align-items:center;" style-hover="border-color:#5C686E;">
+                <span>{{ f.label }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;opacity:0.7;">{{ f.count }}</span>
+              </div>
+            </sc-for>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+              <input type="text" placeholder="Search customer or phone" style="border:1px solid #D3D8CF;background:#FAFBF7;border-radius:2px;padding:8px 11px;font-size:12.5px;width:230px;color:#12171A;">
+            </div>
+          </div>
+
+          <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;box-shadow:3px 3px 0 rgba(27,36,39,0.09);overflow:hidden;">
+            <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;min-width:900px;">
+              <thead>
+                <tr style="background:#E7EAE2;">
+                  <th style="text-align:left;padding:9px 14px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">CUSTOMER</th>
+                  <th style="text-align:left;padding:9px 14px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">PHONE</th>
+                  <th style="text-align:right;padding:9px 14px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">BALANCE</th>
+                  <th style="text-align:right;padding:9px 14px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">OLDEST UNPAID</th>
+                  <th style="text-align:left;padding:9px 14px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;width:190px;">CREDIT LIMIT</th>
+                  <th style="text-align:left;padding:9px 14px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ customers }}" as="c" hint-placeholder-count="8">
+                  <tr onClick="{{ c.open }}" style="cursor:pointer;background:{{ c.rowBg }};" style-hover="background:#F0F2EA;">
+                    <td style="padding:11px 14px;border-bottom:1px solid #E4E7DF;">
+                      <div style="font-size:13.5px;font-weight:600;">{{ c.name }}</div>
+                      <div style="font-size:11.5px;color:#5C686E;">{{ c.trade }}</div>
+                    </td>
+                    <td style="padding:11px 14px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5C686E;">{{ c.phone }}</td>
+                    <td style="padding:11px 14px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:500;">{{ c.balanceF }}</td>
+                    <td style="padding:11px 14px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:{{ c.ageFg }};">{{ c.oldest }}</td>
+                    <td style="padding:11px 14px;border-bottom:1px solid #E4E7DF;">
+                      <div style="height:7px;background:#E4E7DF;border-radius:1px;overflow:hidden;"><div style="height:100%;width:{{ c.usePct }};background:{{ c.useFg }};"></div></div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5C686E;margin-top:4px;">{{ c.useLabel }}</div>
+                    </td>
+                    <td style="padding:11px 14px;border-bottom:1px solid #E4E7DF;">
+                      <span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:0.09em;padding:4px 8px;border-radius:2px;background:{{ c.chipBg }};color:{{ c.chipFg }};">{{ c.chip }}</span>
+                    </td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:fixed;inset:0;z-index:40;display:flex;justify-content:flex-end;">
+          <div onClick="{{ closeDrawer }}" style="flex:1;background:rgba(27,36,39,0.34);"></div>
+          <div style="width:600px;max-width:92vw;background:#FAFBF7;border-left:1px solid #2B373D;display:flex;flex-direction:column;animation:drawerIn 160ms ease-out;box-shadow:-6px 0 0 rgba(27,36,39,0.10);">
+            <div style="background:#2B373D;padding:14px 18px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div>
+                  <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:19px;color:#FAFBF7;">{{ acc.name }}</div>
+                  <div style="font-size:12px;color:#8E9BA0;margin-top:2px;">{{ acc.trade }} · {{ acc.phone }} · account {{ acc.ref }}</div>
+                </div>
+                <div onClick="{{ closeDrawer }}" role="button" tabindex="0" style="color:#8E9BA0;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;" style-hover="color:#F2B705;">✕</div>
+              </div>
+              <div style="display:flex;gap:26px;margin-top:14px;align-items:flex-end;">
+                <div>
+                  <div style="font-size:9.5px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">BALANCE OWING</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:27px;color:#FAFBF7;">{{ acc.balanceF }}</div>
+                </div>
+                <div>
+                  <div style="font-size:9.5px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">OVERDUE PORTION</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:#E38A78;margin-top:6px;">{{ acc.overdueF }}</div>
+                </div>
+                <div style="margin-left:auto;display:flex;gap:8px;">
+                  <div role="button" tabindex="0" style="border:1px solid #4A585E;color:#C6CFD2;border-radius:2px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;" style-hover="border-color:#F2B705;color:#F2B705;">Send reminder</div>
+                  <div role="button" tabindex="0" style="background:#F2B705;border:1px solid #D19E04;border-radius:2px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:#12171A;" style-hover="background:#FFC61A;">Record payment</div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:0;background:#E7EAE2;border-bottom:1px solid #D3D8CF;">
+              <sc-for list="{{ debtTabs }}" as="t" hint-placeholder-count="3">
+                <div onClick="{{ t.open }}" role="button" tabindex="0" style="padding:11px 18px;font-size:12.5px;font-weight:{{ t.weight }};color:{{ t.fg }};border-bottom:3px solid {{ t.mark }};cursor:pointer;letter-spacing:0.02em;" style-hover="color:#12171A;">{{ t.label }}</div>
+              </sc-for>
+            </div>
+            <div style="flex:1;overflow-y:auto;padding:16px 18px 26px;">
+
+              <sc-if value="{{ showStatement }}" hint-placeholder-val="{{ true }}">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+                    <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:14px;letter-spacing:0.06em;">RUNNING STATEMENT</div>
+                    <div style="font-size:11.5px;color:#5C686E;">since 01 Jun 2026</div>
+                  </div>
+                  <table style="width:100%;border-collapse:collapse;background:#FAFBF7;border:1px solid #D3D8CF;">
+                    <thead><tr style="background:#E7EAE2;">
+                      <th style="text-align:left;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">DATE</th>
+                      <th style="text-align:left;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">REF</th>
+                      <th style="text-align:left;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">DETAIL</th>
+                      <th style="text-align:right;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">TAKEN ON CREDIT</th>
+                      <th style="text-align:right;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">PAID</th>
+                      <th style="text-align:right;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">BALANCE</th>
+                    </tr></thead>
+                    <tbody>
+                      <sc-for list="{{ statement }}" as="s" hint-placeholder-count="7">
+                        <tr>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C686E;">{{ s.date }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:11.5px;">{{ s.ref }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;font-size:12px;">{{ s.detail }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12px;color:#B3402E;">{{ s.debit }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12px;color:#1F6F4A;">{{ s.credit }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12px;font-weight:500;">{{ s.balance }}</td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                  <div style="margin-top:10px;font-size:11.5px;color:#5C686E;">Signed for at the counter by the buyer each time — the paper book stays in the drawer as backup.</div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showInvoices }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:14px;letter-spacing:0.06em;margin-bottom:10px;">INVOICES</div>
+                  <table style="width:100%;border-collapse:collapse;background:#FAFBF7;border:1px solid #D3D8CF;">
+                    <thead><tr style="background:#E7EAE2;">
+                      <th style="text-align:left;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">INVOICE</th>
+                      <th style="text-align:left;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">ISSUED</th>
+                      <th style="text-align:left;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">DUE</th>
+                      <th style="text-align:right;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">TOTAL</th>
+                      <th style="text-align:right;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">OUTSTANDING</th>
+                      <th style="text-align:left;padding:7px 10px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">STATUS</th>
+                    </tr></thead>
+                    <tbody>
+                      <sc-for list="{{ invoices }}" as="i" hint-placeholder-count="5">
+                        <tr>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:11.5px;">{{ i.no }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C686E;">{{ i.issued }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:{{ i.dueFg }};">{{ i.due }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12px;">{{ i.total }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12px;font-weight:500;">{{ i.out }}</td>
+                          <td style="padding:9px 10px;border-bottom:1px solid #E4E7DF;"><span style="font-size:10px;font-weight:700;letter-spacing:0.08em;padding:3px 7px;border-radius:2px;background:{{ i.chipBg }};color:{{ i.chipFg }};">{{ i.chip }}</span></td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showReminders }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+                    <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:14px;letter-spacing:0.06em;">REMINDER SEQUENCE</div>
+                    <div style="font-size:11.5px;color:#5C686E;">applies to every invoice on this account</div>
+                  </div>
+                  <div style="font-size:12px;color:#5C686E;margin-bottom:12px;">Steps run automatically over WhatsApp, timed against each invoice's due date. Click a step to edit its message.</div>
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,236px);gap:14px;align-items:start;">
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                      <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+                        <div onClick="{{ st.open }}" role="button" tabindex="0" style="border:1px solid {{ st.border }};border-left:3px solid {{ st.mark }};background:#FAFBF7;border-radius:2px;padding:11px 12px;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.06);">
+                          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+                            <div style="display:flex;align-items:center;gap:10px;">
+                              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5C686E;">{{ st.n }}</span>
+                              <span style="font-size:13px;font-weight:600;">{{ st.when }}</span>
+                            </div>
+                            <div onClick="{{ st.toggle }}" role="button" tabindex="0" style="width:36px;height:18px;border-radius:2px;background:{{ st.swBg }};border:1px solid {{ st.swBorder }};position:relative;cursor:pointer;flex:0 0 36px;">
+                              <span style="position:absolute;top:1px;left:{{ st.swX }};width:14px;height:14px;background:{{ st.swKnob }};border-radius:1px;"></span>
+                            </div>
+                          </div>
+                          <div style="font-size:11.5px;color:#5C686E;margin-top:5px;">{{ st.tone }} · {{ st.channel }}</div>
+                        </div>
+                      </sc-for>
+                      <div style="display:flex;gap:8px;margin-top:2px;">
+                        <div role="button" tabindex="0" style="border:1px dashed #B9C0B4;border-radius:2px;padding:9px 12px;font-size:12px;font-weight:600;color:#5C686E;cursor:pointer;flex:1;text-align:center;" style-hover="border-color:#5C686E;color:#12171A;">+ Add a step</div>
+                      </div>
+                      <div style="border:1px solid #D3D8CF;background:#F3F4EE;border-radius:2px;padding:11px 12px;margin-top:4px;">
+                        <div style="font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;margin-bottom:7px;">MESSAGE FOR STEP {{ activeStepNo }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.6;color:#12171A;background:#FAFBF7;border:1px solid #D3D8CF;padding:10px;border-radius:2px;">{{ activeBody }}</div>
+                        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;border:1px solid #D3D8CF;padding:3px 6px;border-radius:2px;color:#5C686E;">{name}</span>
+                          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;border:1px solid #D3D8CF;padding:3px 6px;border-radius:2px;color:#5C686E;">{amount}</span>
+                          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;border:1px solid #D3D8CF;padding:3px 6px;border-radius:2px;color:#5C686E;">{due_date}</span>
+                          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;border:1px solid #D3D8CF;padding:3px 6px;border-radius:2px;color:#5C686E;">{invoice_no}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="border:1px solid #D3D8CF;background:#E4E7DF;border-radius:2px;padding:10px;box-shadow:3px 3px 0 rgba(27,36,39,0.08);">
+                      <div style="font-size:9.5px;letter-spacing:0.12em;color:#5C686E;font-weight:700;margin-bottom:8px;">LIVE PREVIEW</div>
+                      <div style="background:#2B373D;border-radius:2px;padding:8px 8px 10px;">
+                        <div style="font-size:10.5px;color:#8E9BA0;margin-bottom:8px;">{{ acc.phone }}</div>
+                        <div style="background:#FAFBF7;border-radius:2px;padding:9px 10px;font-size:11.5px;line-height:1.55;color:#12171A;white-space:pre-line;">{{ previewText }}</div>
+                        <div style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8E9BA0;margin-top:5px;">will send {{ previewWhen }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStockList }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Stock Room">
+          <div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;">
+            <div>
+              <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:26px;">The Stock Room</div>
+              <div style="font-size:12.5px;color:#5C686E;margin-top:2px;">148 SKUs · RWF 41,206,800 on hand · last stock-take 22 Jul</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <div role="button" tabindex="0" style="border:1px solid #D3D8CF;background:#FAFBF7;border-radius:2px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.07);" style-hover="border-color:#5C686E;">New product</div>
+              <div onClick="{{ startTake }}" role="button" tabindex="0" style="background:#F2B705;border:1px solid #D19E04;border-radius:2px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.12);" style-hover="background:#FFC61A;">Start a stock take</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+            <sc-for list="{{ stockFilters }}" as="f" hint-placeholder-count="5">
+              <div onClick="{{ f.open }}" role="button" tabindex="0" style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.fg }};border-radius:2px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;display:flex;gap:7px;align-items:center;" style-hover="border-color:#5C686E;">
+                <span>{{ f.label }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;opacity:0.7;">{{ f.count }}</span>
+              </div>
+            </sc-for>
+            <div style="margin-left:auto;"><input type="text" placeholder="Search name or SKU" style="border:1px solid #D3D8CF;background:#FAFBF7;border-radius:2px;padding:8px 11px;font-size:12.5px;width:220px;"></div>
+          </div>
+
+          <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;box-shadow:3px 3px 0 rgba(27,36,39,0.09);">
+            <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;min-width:1040px;">
+              <thead>
+                <tr style="background:#E7EAE2;">
+                  <th style="text-align:left;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">PRODUCT</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">ON HAND</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">AVAILABLE</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">COST</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">PRICE</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">MARGIN</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">VALUE ON HAND</th>
+                  <th style="text-align:left;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ products }}" as="p" hint-placeholder-count="10">
+                  <tr onClick="{{ p.open }}" style="cursor:pointer;" style-hover="background:#F0F2EA;">
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;">
+                      <div style="display:flex;align-items:center;gap:11px;">
+                        <div style="width:34px;height:34px;flex:0 0 34px;background:#E4E7DF;border:1px solid #D3D8CF;display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#5C686E;">{{ p.initials }}</div>
+                        <div>
+                          <div style="font-size:13.5px;font-weight:600;">{{ p.name }}</div>
+                          <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5C686E;">{{ p.sku }} · {{ p.unit }}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;color:{{ p.qtyFg }};font-weight:500;">{{ p.onHand }}</td>
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:#5C686E;">{{ p.available }}</td>
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;color:#5C686E;">{{ p.cost }}</td>
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;">{{ p.price }}</td>
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;color:{{ p.marginFg }};font-weight:500;">{{ p.margin }}</td>
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;">{{ p.value }}</td>
+                    <td style="padding:9px 12px;border-bottom:1px solid #E4E7DF;"><span style="font-size:10px;font-weight:700;letter-spacing:0.08em;padding:4px 8px;border-radius:2px;background:{{ p.chipBg }};color:{{ p.chipFg }};">{{ p.chip }}</span></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStockDetail }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Product detail">
+          <div onClick="{{ backToStock }}" role="button" tabindex="0" style="font-size:12px;font-weight:600;color:#5C686E;cursor:pointer;margin-bottom:10px;display:inline-block;" style-hover="color:#12171A;">← Back to the stock room</div>
+          <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;box-shadow:3px 3px 0 rgba(27,36,39,0.09);">
+            <div style="display:flex;gap:16px;padding:16px 18px;border-bottom:1px solid #D3D8CF;align-items:flex-start;">
+              <div style="width:74px;height:74px;flex:0 0 74px;background:#E4E7DF;border:1px solid #D3D8CF;display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#5C686E;">{{ prod.initials }}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:23px;">{{ prod.name }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#5C686E;margin-top:3px;">{{ prod.sku }} · {{ prod.unit }} · shelf {{ prod.bin }} · supplier {{ prod.supplier }}</div>
+              </div>
+              <div style="display:flex;gap:22px;text-align:right;">
+                <div>
+                  <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">ON HAND</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:24px;color:{{ prod.qtyFg }};">{{ prod.onHand }}</div>
+                </div>
+                <div>
+                  <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">VALUE ON HAND</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:24px;">{{ prod.value }}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px;">
+                  <div role="button" tabindex="0" style="border:1px solid #D3D8CF;border-radius:2px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;" style-hover="border-color:#5C686E;">Adjust stock</div>
+                  <div role="button" tabindex="0" style="background:#F2B705;border:1px solid #D19E04;border-radius:2px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;" style-hover="background:#FFC61A;">Order more</div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;background:#E7EAE2;border-bottom:1px solid #D3D8CF;">
+              <sc-for list="{{ stockTabs }}" as="t" hint-placeholder-count="4">
+                <div onClick="{{ t.open }}" role="button" tabindex="0" style="padding:11px 20px;font-size:12.5px;font-weight:{{ t.weight }};color:{{ t.fg }};border-bottom:3px solid {{ t.mark }};cursor:pointer;" style-hover="color:#12171A;">{{ t.label }}</div>
+              </sc-for>
+            </div>
+
+            <div style="padding:18px;">
+              <sc-if value="{{ tabDetails }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:#D3D8CF;border:1px solid #D3D8CF;">
+                  <sc-for list="{{ facts }}" as="f" hint-placeholder-count="8">
+                    <div style="background:#FAFBF7;padding:12px 14px;">
+                      <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">{{ f.k }}</div>
+                      <div style="font-family:{{ f.font }};font-size:15px;margin-top:5px;color:{{ f.fg }};">{{ f.v }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ tabPricing }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+                    <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:15px;letter-spacing:0.05em;">COST VS PRICE — LAST 8 MONTHS</div>
+                    <div style="display:flex;gap:16px;font-size:11.5px;color:#5C686E;">
+                      <span style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:2px;background:#12171A;display:inline-block;"></span>Selling price</span>
+                      <span style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:2px;background:#8A6A17;display:inline-block;"></span>Cost from supplier</span>
+                    </div>
+                  </div>
+                  <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:10px;">
+                    <svg viewBox="0 0 600 210" style="width:100%;height:230px;display:block;" preserveAspectRatio="none">
+                      <line x1="40" y1="20" x2="580" y2="20" stroke="#E4E7DF" stroke-width="1"></line>
+                      <line x1="40" y1="60" x2="580" y2="60" stroke="#E4E7DF" stroke-width="1"></line>
+                      <line x1="40" y1="100" x2="580" y2="100" stroke="#E4E7DF" stroke-width="1"></line>
+                      <line x1="40" y1="140" x2="580" y2="140" stroke="#E4E7DF" stroke-width="1"></line>
+                      <line x1="40" y1="180" x2="580" y2="180" stroke="#D3D8CF" stroke-width="1"></line>
+                      <polyline points="40,96 110,96 180,84 250,84 320,64 390,64 460,44 530,44" fill="none" stroke="#12171A" stroke-width="2"></polyline>
+                      <polyline points="40,164 110,160 180,154 250,154 320,144 390,136 460,136 530,128" fill="none" stroke="#8A6A17" stroke-width="2" stroke-dasharray="5 3"></polyline>
+                      <circle cx="530" cy="44" r="3.5" fill="#12171A"></circle>
+                      <circle cx="530" cy="128" r="3.5" fill="#8A6A17"></circle>
+                      <text x="40" y="200" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">Jan</text>
+                      <text x="180" y="200" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">Mar</text>
+                      <text x="320" y="200" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">May</text>
+                      <text x="460" y="200" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">Jul</text>
+                      <text x="4" y="24" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">14.5k</text>
+                      <text x="4" y="104" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">12.5k</text>
+                      <text x="4" y="184" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">10.5k</text>
+                    </svg>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:14px;">
+                    <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:12px 14px;">
+                      <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">CURRENT MARGIN</div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;color:#1F6F4A;margin-top:4px;">{{ prod.margin }}</div>
+                      <div style="font-size:11.5px;color:#5C686E;margin-top:3px;">RWF {{ prod.marginAbs }} per {{ prod.unit }}</div>
+                    </div>
+                    <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:12px 14px;">
+                      <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">COST MOVED</div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;color:#B3402E;margin-top:4px;">+8.3%</div>
+                      <div style="font-size:11.5px;color:#5C686E;margin-top:3px;">since January · price up 10.3%</div>
+                    </div>
+                    <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:12px 14px;">
+                      <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">TRADE PRICE (10+)</div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;margin-top:4px;">RWF 13,400</div>
+                      <div style="font-size:11.5px;color:#5C686E;margin-top:3px;">used on 61% of sales</div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ tabStock }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:15px;letter-spacing:0.05em;margin-bottom:8px;">MOVEMENT LEDGER</div>
+                  <table style="width:100%;border-collapse:collapse;border:1px solid #D3D8CF;background:#FAFBF7;">
+                    <thead><tr style="background:#E7EAE2;">
+                      <th style="text-align:left;padding:8px 11px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">DATE</th>
+                      <th style="text-align:left;padding:8px 11px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">REF</th>
+                      <th style="text-align:left;padding:8px 11px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">MOVEMENT</th>
+                      <th style="text-align:left;padding:8px 11px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">BY</th>
+                      <th style="text-align:right;padding:8px 11px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">IN</th>
+                      <th style="text-align:right;padding:8px 11px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">OUT</th>
+                      <th style="text-align:right;padding:8px 11px;font-size:9.5px;letter-spacing:0.11em;color:#5C686E;border-bottom:1px solid #D3D8CF;">BALANCE</th>
+                    </tr></thead>
+                    <tbody>
+                      <sc-for list="{{ ledger }}" as="l" hint-placeholder-count="9">
+                        <tr>
+                          <td style="padding:9px 11px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C686E;">{{ l.date }}</td>
+                          <td style="padding:9px 11px;border-bottom:1px solid #E4E7DF;font-family:'IBM Plex Mono',monospace;font-size:11.5px;">{{ l.ref }}</td>
+                          <td style="padding:9px 11px;border-bottom:1px solid #E4E7DF;font-size:12px;">{{ l.what }}</td>
+                          <td style="padding:9px 11px;border-bottom:1px solid #E4E7DF;font-size:12px;color:#5C686E;">{{ l.by }}</td>
+                          <td style="padding:9px 11px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;color:#1F6F4A;">{{ l.in }}</td>
+                          <td style="padding:9px 11px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;color:#B3402E;">{{ l.out }}</td>
+                          <td style="padding:9px 11px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:500;">{{ l.bal }}</td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ tabMovement }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+                    <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:15px;letter-spacing:0.05em;">SELL-THROUGH — LAST 12 WEEKS</div>
+                    <div style="font-size:11.5px;color:#5C686E;">bags sold per week · dashed line = reorder point cover</div>
+                  </div>
+                  <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:10px;">
+                    <svg viewBox="0 0 600 210" style="width:100%;height:230px;display:block;" preserveAspectRatio="none">
+                      <line x1="30" y1="180" x2="580" y2="180" stroke="#D3D8CF"></line>
+                      <line x1="30" y1="64" x2="580" y2="64" stroke="#8A6A17" stroke-dasharray="4 4"></line>
+                      <rect x="40" y="96" width="28" height="84" fill="#2B373D"></rect>
+                      <rect x="84" y="70" width="28" height="110" fill="#2B373D"></rect>
+                      <rect x="128" y="104" width="28" height="76" fill="#2B373D"></rect>
+                      <rect x="172" y="58" width="28" height="122" fill="#2B373D"></rect>
+                      <rect x="216" y="32" width="28" height="148" fill="#2B373D"></rect>
+                      <rect x="260" y="64" width="28" height="116" fill="#2B373D"></rect>
+                      <rect x="304" y="48" width="28" height="132" fill="#2B373D"></rect>
+                      <rect x="348" y="82" width="28" height="98" fill="#2B373D"></rect>
+                      <rect x="392" y="38" width="28" height="142" fill="#2B373D"></rect>
+                      <rect x="436" y="14" width="28" height="166" fill="#2B373D"></rect>
+                      <rect x="480" y="44" width="28" height="136" fill="#2B373D"></rect>
+                      <rect x="524" y="26" width="28" height="154" fill="#F2B705"></rect>
+                      <text x="40" y="198" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">W22</text>
+                      <text x="216" y="198" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">W26</text>
+                      <text x="392" y="198" font-family="IBM Plex Mono" font-size="10" fill="#5C686E">W30</text>
+                      <text x="519" y="198" font-family="IBM Plex Mono" font-size="10" fill="#12171A">this wk</text>
+                    </svg>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:14px;">
+                    <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:12px 14px;">
+                      <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">AVERAGE WEEKLY SALES</div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;margin-top:4px;">62 {{ prod.unit }}</div>
+                    </div>
+                    <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:12px 14px;">
+                      <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">COVER AT THIS RATE</div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;margin-top:4px;color:#8A6A17;">3.9 weeks</div>
+                    </div>
+                    <div style="border:1px solid #D3D8CF;background:#FAFBF7;padding:12px 14px;">
+                      <div style="font-size:9.5px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">LAST SOLD</div>
+                      <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;margin-top:4px;">today 13:52</div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isTakeScope }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Stock take — scope">
+          <div onClick="{{ backToStock }}" role="button" tabindex="0" style="font-size:12px;font-weight:600;color:#5C686E;cursor:pointer;margin-bottom:10px;display:inline-block;" style-hover="color:#12171A;">← Cancel stock take</div>
+          <div style="max-width:860px;">
+            <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:26px;">Stock take</div>
+            <div style="font-size:13px;color:#5C686E;margin:3px 0 16px;">What are we counting? Counting is blind — the system's figure is hidden until review, so nobody counts to match the book.</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+              <sc-for list="{{ scopes }}" as="s" hint-placeholder-count="4">
+                <div onClick="{{ s.open }}" role="button" tabindex="0" style="background:#FAFBF7;border:1px solid {{ s.border }};border-top:3px solid {{ s.mark }};border-radius:2px;padding:14px;cursor:pointer;box-shadow:3px 3px 0 rgba(27,36,39,0.08);" style-hover="border-color:#5C686E;">
+                  <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:16px;">{{ s.label }}</div>
+                  <div style="font-size:12px;color:#5C686E;margin-top:4px;">{{ s.note }}</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:19px;margin-top:10px;">{{ s.count }}</div>
+                  <div style="font-size:10.5px;letter-spacing:0.12em;color:#5C686E;font-weight:700;">SKUs · {{ s.time }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:18px;">
+              <div onClick="{{ beginCount }}" role="button" tabindex="0" style="background:#F2B705;border:1px solid #D19E04;border-radius:2px;padding:12px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.12);" style-hover="background:#FFC61A;">Start counting</div>
+              <div style="font-size:12px;color:#5C686E;">Counter stays open — sales during the count are tracked and adjusted for.</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isCounting }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Stock take — counting" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+          <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;box-shadow:3px 3px 0 rgba(27,36,39,0.09);flex:1 1 250px;max-width:300px;min-width:0;">
+            <div style="padding:12px 14px;border-bottom:1px solid #D3D8CF;">
+              <div style="font-size:10px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">COUNT SHEET · {{ takeScopeLabel }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:19px;margin-top:5px;">{{ countedN }} / {{ scopeN }} counted</div>
+              <div style="height:6px;background:#E4E7DF;margin-top:8px;"><div style="height:100%;width:{{ countPct }};background:#F2B705;"></div></div>
+            </div>
+            <div style="max-height:62vh;overflow-y:auto;">
+              <sc-for list="{{ sheet }}" as="s" hint-placeholder-count="8">
+                <div onClick="{{ s.open }}" role="button" tabindex="0" style="display:flex;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid #E4E7DF;cursor:pointer;background:{{ s.bg }};border-left:3px solid {{ s.mark }};" style-hover="background:#F0F2EA;">
+                  <div style="min-width:0;">
+                    <div style="font-size:12.5px;font-weight:{{ s.weight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.name }}</div>
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5C686E;">{{ s.sku }}</div>
+                  </div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:{{ s.fg }};">{{ s.counted }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;box-shadow:3px 3px 0 rgba(27,36,39,0.09);padding:20px;flex:3 1 420px;min-width:0;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+              <div>
+                <div style="font-size:10px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">ITEM {{ takePos }} OF {{ scopeN }}</div>
+                <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:34px;line-height:1.1;margin-top:5px;">{{ current.name }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#5C686E;margin-top:4px;">{{ current.sku }} · counted in {{ current.unit }} · shelf {{ current.bin }}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:10px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">SYSTEM FIGURE</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;color:#8A6A17;">hidden</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:22px;margin-top:20px;align-items:start;">
+              <div>
+                <div style="border:1px solid #D3D8CF;background:#F3F4EE;padding:18px 20px;text-align:center;">
+                  <div style="font-size:10px;letter-spacing:0.13em;color:#5C686E;font-weight:700;">COUNTED QUANTITY</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:86px;line-height:1.05;font-weight:500;color:{{ entryFg }};">{{ entryShown }}</div>
+                  <div style="font-size:12.5px;color:#5C686E;">{{ current.unit }}</div>
+                </div>
+                <div style="display:flex;gap:10px;margin-top:14px;">
+                  <div onClick="{{ skip }}" role="button" tabindex="0" style="flex:0 0 auto;border:1px solid #D3D8CF;background:#FAFBF7;border-radius:2px;padding:14px 18px;font-size:14px;font-weight:600;cursor:pointer;text-align:center;" style-hover="border-color:#5C686E;">Skip</div>
+                  <div onClick="{{ confirm }}" role="button" tabindex="0" style="flex:1;background:#F2B705;border:1px solid #D19E04;border-radius:2px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;box-shadow:2px 2px 0 rgba(27,36,39,0.12);" style-hover="background:#FFC61A;">Confirm &amp; next</div>
+                </div>
+                <div onClick="{{ finishCount }}" role="button" tabindex="0" style="margin-top:12px;font-size:12px;font-weight:600;color:#5C686E;cursor:pointer;display:inline-block;" style-hover="color:#12171A;">Finish count and review variances →</div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+                <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
+                  <div onClick="{{ k.press }}" role="button" tabindex="0" style="border:1px solid #D3D8CF;background:#FAFBF7;border-radius:2px;height:62px;display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:23px;cursor:pointer;user-select:none;box-shadow:2px 2px 0 rgba(27,36,39,0.07);" style-hover="background:#EDEFE9;" style-active="box-shadow:none;transform:translate(2px,2px);">{{ k.label }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isReview }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Stock take — review">
+          <div onClick="{{ backToCount }}" role="button" tabindex="0" style="font-size:12px;font-weight:600;color:#5C686E;cursor:pointer;margin-bottom:10px;display:inline-block;" style-hover="color:#12171A;">← Back to counting</div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+            <div>
+              <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:26px;">Variances only</div>
+              <div style="font-size:12.5px;color:#5C686E;margin-top:2px;">{{ varianceN }} of {{ countedN }} counted items disagree with the book · sorted by value at risk</div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:stretch;">
+              <div style="background:#2B373D;border-radius:2px;padding:12px 18px;box-shadow:3px 3px 0 rgba(27,36,39,0.14);">
+                <div style="font-size:9.5px;letter-spacing:0.14em;color:#8E9BA0;font-weight:600;">TOTAL SHRINKAGE</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:28px;color:#E38A78;">{{ shrinkF }}</div>
+                <div style="font-size:11px;color:#8E9BA0;">{{ shrinkPct }} of counted stock value</div>
+              </div>
+              <div role="button" tabindex="0" onClick="{{ backToStock }}" style="align-self:stretch;background:#F2B705;border:1px solid #D19E04;border-radius:2px;padding:0 22px;display:grid;place-items:center;font-size:14px;font-weight:700;cursor:pointer;box-shadow:2px 2px 0 rgba(27,36,39,0.12);" style-hover="background:#FFC61A;">Post adjustments</div>
+            </div>
+          </div>
+          <sc-if value="{{ hasVariances }}" hint-placeholder-val="{{ true }}">
+            <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;box-shadow:3px 3px 0 rgba(27,36,39,0.09);">
+              <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="background:#E7EAE2;">
+                  <th style="text-align:left;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">PRODUCT</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">BOOK SAYS</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">COUNTED</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">VARIANCE</th>
+                  <th style="text-align:right;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">VALUE AT COST</th>
+                  <th style="text-align:left;padding:9px 12px;font-size:10px;letter-spacing:0.12em;color:#5C686E;font-weight:700;border-bottom:1px solid #D3D8CF;">LIKELY CAUSE</th>
+                </tr></thead>
+                <tbody>
+                  <sc-for list="{{ variances }}" as="v" hint-placeholder-count="4">
+                    <tr>
+                      <td style="padding:11px 12px;border-bottom:1px solid #E4E7DF;">
+                        <div style="font-size:13.5px;font-weight:600;">{{ v.name }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5C686E;">{{ v.sku }}</div>
+                      </td>
+                      <td style="padding:11px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#5C686E;">{{ v.book }}</td>
+                      <td style="padding:11px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;">{{ v.counted }}</td>
+                      <td style="padding:11px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:15px;font-weight:500;color:{{ v.fg }};">{{ v.delta }}</td>
+                      <td style="padding:11px 12px;border-bottom:1px solid #E4E7DF;text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:{{ v.fg }};">{{ v.valueF }}</td>
+                      <td style="padding:11px 12px;border-bottom:1px solid #E4E7DF;font-size:12px;color:#5C686E;">{{ v.cause }}</td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noVariances }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;padding:34px;text-align:center;box-shadow:3px 3px 0 rgba(27,36,39,0.09);">
+              <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;">Every counted item agrees with the book.</div>
+              <div style="font-size:12.5px;color:#5C686E;margin-top:5px;">Nothing to adjust. Count more items or post the take as clean.</div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isOther }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;place-items:center;min-height:52vh;">
+          <div style="background:#FAFBF7;border:1px solid #D3D8CF;border-radius:2px;padding:28px 34px;text-align:center;max-width:460px;box-shadow:3px 3px 0 rgba(27,36,39,0.09);">
+            <div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;letter-spacing:0.02em;">{{ otherTitle }}</div>
+            <div style="font-size:12.5px;color:#5C686E;margin-top:6px;line-height:1.6;">{{ otherNote }}</div>
+            <div onClick="{{ goDebt }}" role="button" tabindex="0" style="margin-top:16px;display:inline-block;border:1px solid #D3D8CF;border-radius:2px;padding:9px 15px;font-size:12.5px;font-weight:600;cursor:pointer;" style-hover="border-color:#5C686E;">Back to the Debt Book</div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:940}}">
+const YEL='#F2B705', GRN='#1F6F4A', RED='#B3402E', CAU='#8A6A17', TXT='#12171A', SEC='#5C686E', HAIR='#D3D8CF';
+
+const PRODUCTS=[
+ {id:'p1',name:'Cement CIMERWA 50kg',sku:'CEM-050',unit:'bag',bin:'A1',supplier:'CIMERWA Kigali',onHand:240,available:212,cost:11800,price:13900,flags:[]},
+ {id:'p2',name:'Cement Prime 50kg',sku:'CEM-P50',unit:'bag',bin:'A2',supplier:'Prime Cement Musanze',onHand:18,available:14,cost:11500,price:13500,flags:['low']},
+ {id:'p3',name:'Rebar 12mm × 12m',sku:'RB-12',unit:'bar',bin:'Yard 1',supplier:'Steel Rwanda Ltd',onHand:0,available:0,cost:15400,price:17900,flags:['out']},
+ {id:'p4',name:'Rebar 8mm × 12m',sku:'RB-08',unit:'bar',bin:'Yard 1',supplier:'Steel Rwanda Ltd',onHand:96,available:84,cost:7200,price:8600,flags:[]},
+ {id:'p5',name:'PVC pipe 110mm × 3m',sku:'PVC-110',unit:'length',bin:'B4',supplier:'Rwanda Plastics',onHand:54,available:54,cost:9800,price:12400,flags:[]},
+ {id:'p6',name:'PVC pipe 63mm × 3m',sku:'PVC-063',unit:'length',bin:'B4',supplier:'Rwanda Plastics',onHand:12,available:9,cost:4600,price:5900,flags:['low']},
+ {id:'p7',name:'Sadolin vinyl white 20L',sku:'PNT-W20',unit:'tin',bin:'C2',supplier:'Sadolin Kigali',onHand:27,available:25,cost:52000,price:61500,flags:[]},
+ {id:'p8',name:'Crown terracotta 4L',sku:'PNT-T04',unit:'tin',bin:'C3',supplier:'Crown Paints',onHand:6,available:6,cost:14200,price:15100,flags:['low']},
+ {id:'p9',name:'Roofing sheet IT4 3m',sku:'RFS-IT4',unit:'sheet',bin:'Yard 2',supplier:'Safintra Rwanda',onHand:130,available:118,cost:13600,price:16200,flags:[]},
+ {id:'p10',name:'Tile adhesive 25kg',sku:'ADH-25',unit:'bag',bin:'D1',supplier:'Bostik EA',onHand:3,available:3,cost:18400,price:22000,flags:['low','exp']},
+ {id:'p11',name:'Binding wire 25kg roll',sku:'BWR-25',unit:'roll',bin:'Yard 1',supplier:'Steel Rwanda Ltd',onHand:41,available:41,cost:31000,price:35500,flags:[]},
+ {id:'p12',name:'Nails 4" 25kg',sku:'NL-4',unit:'box',bin:'D3',supplier:'Kigali Fasteners',onHand:33,available:33,cost:27500,price:31000,flags:[]},
+ {id:'p13',name:'Silicone sealant clear',sku:'SIL-CL',unit:'tube',bin:'E1',supplier:'Kigali Fasteners',onHand:88,available:88,cost:3100,price:4200,flags:['dead']},
+ {id:'p14',name:'Padlock 50mm brass',sku:'PDL-50',unit:'each',bin:'E2',supplier:'Hardware Direct',onHand:210,available:210,cost:4800,price:5100,flags:['dead']},
+ {id:'p15',name:'Wheelbarrow heavy 90L',sku:'WBR-90',unit:'each',bin:'Yard 2',supplier:'Hardware Direct',onHand:7,available:5,cost:48000,price:57000,flags:[]}
+];
+
+const CUSTOMERS=[
+ {id:'c1',name:'Jean Bosco Habimana',trade:'Habimana Construction',phone:'+250 788 214 660',balance:1845000,oldest:62,limit:2000000,status:'overdue'},
+ {id:'c2',name:'Claudine Uwase',trade:'Uwase Hardware, Kicukiro',phone:'+250 788 902 341',balance:3120000,oldest:94,limit:2500000,status:'critical'},
+ {id:'c3',name:'Eric Nsengimana',trade:'Nsengimana Builders',phone:'+250 788 331 905',balance:640000,oldest:12,limit:800000,status:'current'},
+ {id:'c4',name:'Ama Serwaa',trade:'Serwaa Interiors',phone:'+250 782 470 112',balance:210000,oldest:4,limit:500000,status:'current'},
+ {id:'c5',name:'Fidèle Rwigema',trade:'Site 14, Kanombe',phone:'+250 788 617 208',balance:980000,oldest:38,limit:1000000,status:'overdue'},
+ {id:'c6',name:'Grace Mukamana',trade:'Mukamana Tiles & Sanitary',phone:'+250 783 155 490',balance:1420000,oldest:21,limit:2000000,status:'week'},
+ {id:'c7',name:'Samuel Okoro',trade:'Okoro Roofing',phone:'+250 789 044 771',balance:2260000,oldest:47,limit:2200000,status:'critical'},
+ {id:'c8',name:'Diane Ingabire',trade:'Ingabire Paints, Remera',phone:'+250 788 730 016',balance:395000,oldest:9,limit:600000,status:'current'},
+ {id:'c9',name:'Patrick Mwangi',trade:'Mwangi & Sons Plumbing',phone:'+250 786 288 143',balance:735000,oldest:26,limit:900000,status:'week'},
+ {id:'c10',name:'Innocent Bizimana',trade:'Bizimana Hardware, Nyabugogo',phone:'+250 788 401 559',balance:875000,oldest:71,limit:1200000,status:'overdue'}
+];
+
+const STATEMENTS={
+ default:[
+  {date:'02 Jun',ref:'INV-2841',detail:'40 bags cement, 12 bars rebar 12mm',debit:'690,800',credit:'—',balance:'690,800'},
+  {date:'11 Jun',ref:'PAY-1190',detail:'MTN MoMo · ref 8814QK',debit:'—',credit:'400,000',balance:'290,800'},
+  {date:'24 Jun',ref:'INV-2977',detail:'Roofing sheets IT4 × 60',debit:'972,000',credit:'—',balance:'1,262,800'},
+  {date:'08 Jul',ref:'PAY-1284',detail:'Cash at counter · receipt 4471',debit:'—',credit:'300,000',balance:'962,800'},
+  {date:'19 Jul',ref:'INV-3102',detail:'Binding wire × 8, nails 4" × 10',debit:'594,000',credit:'—',balance:'1,556,800'},
+  {date:'02 Aug',ref:'INV-3188',detail:'Cement 20 bags, tile adhesive × 6',debit:'410,000',credit:'—',balance:'1,966,800'},
+  {date:'14 Aug',ref:'PAY-1361',detail:'Bank transfer · BK 0092188',debit:'—',credit:'121,800',balance:'1,845,000'}
+ ]
+};
+
+const INVOICES=[
+ {no:'INV-2841',issued:'02 Jun',due:'02 Jul',total:'690,800',out:'—',chip:'PAID',state:'paid'},
+ {no:'INV-2977',issued:'24 Jun',due:'24 Jul',total:'972,000',out:'672,000',chip:'OVERDUE 26D',state:'over'},
+ {no:'INV-3102',issued:'19 Jul',due:'18 Aug',total:'594,000',out:'594,000',chip:'OVERDUE 1D',state:'over'},
+ {no:'INV-3188',issued:'02 Aug',due:'01 Sep',total:'410,000',out:'410,000',chip:'DUE IN 13D',state:'open'},
+ {no:'INV-3241',issued:'12 Aug',due:'11 Sep',total:'169,000',out:'169,000',chip:'DUE IN 23D',state:'open'}
+];
+
+const LEDGER=[
+ {date:'19 Aug 13:52',ref:'SL-9921',what:'Sold at the counter',by:'Yvette',in:'—',out:'12',bal:'240'},
+ {date:'19 Aug 09:14',ref:'SL-9903',what:'Sold at the counter',by:'Alphonse',in:'—',out:'8',bal:'252'},
+ {date:'18 Aug 16:40',ref:'GR-0442',what:'Goods received · PO-0198',by:'Store',in:'200',out:'—',bal:'260'},
+ {date:'18 Aug 11:02',ref:'SL-9871',what:'Sold on credit · J. Habimana',by:'Yvette',in:'—',out:'40',bal:'60'},
+ {date:'16 Aug 15:20',ref:'ADJ-0071',what:'Adjustment · 2 bags torn in yard',by:'Alphonse',in:'—',out:'2',bal:'100'},
+ {date:'15 Aug 10:35',ref:'SL-9802',what:'Sold at the counter',by:'Claude',in:'—',out:'25',bal:'102'},
+ {date:'13 Aug 08:50',ref:'GR-0431',what:'Goods received · PO-0191',by:'Store',in:'150',out:'—',bal:'127'},
+ {date:'12 Aug 17:10',ref:'RT-0038',what:'Customer return · wrong grade',by:'Yvette',in:'4',out:'—',bal:'-23'},
+ {date:'12 Aug 14:22',ref:'SL-9744',what:'Sold on credit · S. Okoro',by:'Claude',in:'—',out:'55',bal:'-27'}
+];
+
+const SCOPES=[
+ {id:'all',label:'Whole shop',note:'Every SKU, yard included',count:'148',time:'≈ 3h with two staff'},
+ {id:'cat',label:'One category',note:'Cement & aggregates',count:'22',time:'≈ 25 min'},
+ {id:'bin',label:'One shelf or bin',note:'Shelf C — paint',count:'14',time:'≈ 15 min'},
+ {id:'low',label:'Low & fast movers',note:'Below reorder point or selling daily',count:'8',time:'≈ 12 min'}
+];
+
+const STEP_BODIES={
+ s1:'Muraho {name}, a friendly reminder from Gasabo Hardware: invoice {invoice_no} of RWF {amount} falls due on {due_date}. MoMo *182*8*1*  or pay at the counter. Murakoze!',
+ s2:'Muraho {name}, invoice {invoice_no} (RWF {amount}) is due today. You can send by MTN MoMo to 0788 000 142 (Gasabo Hardware) or drop by the shop. Thank you for your business.',
+ s3:'Muraho {name}, invoice {invoice_no} of RWF {amount} was due on {due_date} and is still open. Can you tell us which day you plan to settle so we hold your credit line open? — Alphonse, Gasabo Hardware',
+ s4:'Muraho {name}, RWF {amount} on invoice {invoice_no} is now 21 days past due and your account is on hold for new credit. Please call Alphonse on 0788 000 142 today so we can agree a payment plan.'
+};
+
+class Component extends DCLogic {
+  state={room:'debt',debtFilter:'all',drawerOpen:false,customerId:'c1',debtTab:'statement',stepId:'s3',
+    steps:[
+      {id:'s1',n:'01',when:'3 days before due date',tone:'Friendly nudge',channel:'WhatsApp',on:true},
+      {id:'s2',n:'02',when:'On the due date',tone:'Neutral, payment details',channel:'WhatsApp',on:true},
+      {id:'s3',n:'03',when:'7 days after due date',tone:'Firm, asks for a date',channel:'WhatsApp + SMS',on:true},
+      {id:'s4',n:'04',when:'21 days after due date',tone:'Final before credit hold',channel:'WhatsApp + call task',on:false}
+    ],
+    stockFilter:'all',stockView:'list',productId:'p1',stockTab:'details',
+    takeStep:null,takeScope:'low',takeIndex:0,entry:'',counts:{}};
+
+  money(n){return 'RWF '+n.toLocaleString('en-US');}
+  plain(n){return n.toLocaleString('en-US');}
+
+  scopeList(){
+    const s=this.state.takeScope;
+    if(s==='cat') return PRODUCTS.filter(p=>p.sku.indexOf('CEM')===0||p.sku.indexOf('RB')===0);
+    if(s==='bin') return PRODUCTS.filter(p=>p.bin[0]==='C');
+    if(s==='low') return PRODUCTS.filter(p=>p.flags.includes('low')||p.flags.includes('out')).concat(PRODUCTS.filter(p=>['p1','p9','p4','p5'].includes(p.id)));
+    return PRODUCTS;
+  }
+  seedCount(p){
+    const map={p1:236,p2:18,p3:0,p4:91,p5:54,p6:10,p7:27,p8:6,p9:126,p10:3,p11:41,p12:33,p13:88,p14:203,p15:7};
+    return map[p.id]!==undefined?map[p.id]:p.onHand;
+  }
+
+  renderVals(){
+    const st=this.state, self=this;
+    const room=st.room, isStock=room==='stock';
+    const roomDefs=[
+      {id:'counter',label:'Counter',badge:''},
+      {id:'stock',label:'Stock Room',badge:'7'},
+      {id:'debt',label:'Debt Book',badge:'9'},
+      {id:'cash',label:'Cash Box',badge:''},
+      {id:'suppliers',label:'Suppliers',badge:'3'},
+      {id:'team',label:'Team',badge:''},
+      {id:'back',label:'Back Office',badge:''}
+    ];
+    const rooms=roomDefs.map(r=>{
+      const active=r.id===room;
+      return {label:r.label,badge:r.badge,mark:active?YEL:'transparent',bg:active?'#1B2427':'transparent',
+        fg:active?'#FAFBF7':'#B4BFC4',weight:active?'700':'500',
+        badgeBg:r.badge?(active?'rgba(242,183,5,0.16)':'rgba(255,255,255,0.07)'):'transparent',
+        badgeFg:r.badge?(active?YEL:'#8E9BA0'):'transparent',
+        open:()=>this.setState({room:r.id,drawerOpen:false,stockView:'list',takeStep:null})};
+    });
+
+    const tallyDefs=[
+      {label:'TAKEN TODAY',value:'RWF 1,240,500',key:'sales'},
+      {label:'ON CREDIT TODAY',value:'RWF 385,000',key:'credit'},
+      {label:'IN THE TILL',value:'RWF 742,000',key:'till'},
+      {label:'LOW STOCK',value:'7 items',key:'stock'}
+    ];
+    const activeKey=isStock?'stock':(room==='debt'?'credit':'sales');
+    const tally=tallyDefs.map(t=>({label:t.label,value:t.value,
+      fg:t.key===activeKey?'#FAFBF7':'#C6CFD2',mark:t.key===activeKey?YEL:'transparent'}));
+
+    const chipFor=p=>{
+      if(p.flags.includes('out')) return {chip:'OUT OF STOCK',chipBg:'rgba(179,64,46,0.12)',chipFg:RED};
+      if(p.flags.includes('exp')) return {chip:'EXPIRING',chipBg:'rgba(138,106,23,0.14)',chipFg:CAU};
+      if(p.flags.includes('low')) return {chip:'LOW STOCK',chipBg:'rgba(138,106,23,0.14)',chipFg:CAU};
+      if(p.flags.includes('dead')) return {chip:'DEAD STOCK',chipBg:'#E7EAE2',chipFg:SEC};
+      return {chip:'IN STOCK',chipBg:'rgba(31,111,74,0.11)',chipFg:GRN};
+    };
+    const decorate=p=>{
+      const m=(p.price-p.cost)/p.price*100;
+      const c=chipFor(p);
+      return Object.assign({},p,c,{
+        initials:p.sku.slice(0,3),
+        onHandN:p.onHand,
+        onHand:this.plain(p.onHand),available:this.plain(p.available),
+        cost:this.plain(p.cost),price:this.plain(p.price),
+        margin:m.toFixed(1)+'%',marginAbs:this.plain(p.price-p.cost),
+        marginFg:m>=15?GRN:(m>=8?CAU:RED),
+        qtyFg:p.onHand===0?RED:(p.flags.includes('low')?CAU:TXT),
+        value:this.plain(p.onHand*p.cost),
+        open:()=>this.setState({stockView:'detail',productId:p.id,stockTab:'details'})
+      });
+    };
+
+    const sf=st.stockFilter;
+    const counts={all:PRODUCTS.length,low:PRODUCTS.filter(p=>p.flags.includes('low')).length,
+      out:PRODUCTS.filter(p=>p.flags.includes('out')).length,
+      exp:PRODUCTS.filter(p=>p.flags.includes('exp')).length,
+      dead:PRODUCTS.filter(p=>p.flags.includes('dead')).length};
+    const stockFilters=[['all','All stock'],['low','Low stock'],['out','Out of stock'],['exp','Expiring'],['dead','Dead stock']]
+      .map(([id,label])=>({label,count:id==='all'?'148':String(counts[id]),
+        bg:sf===id?'#2B373D':'#FAFBF7',fg:sf===id?'#FAFBF7':TXT,border:sf===id?'#2B373D':HAIR,
+        open:()=>this.setState({stockFilter:id})}));
+    const filtered=(sf==='all'?PRODUCTS:PRODUCTS.filter(p=>p.flags.includes(sf))).map(decorate);
+
+    const prod=decorate(PRODUCTS.find(p=>p.id===st.productId)||PRODUCTS[0]);
+    const stockTabs=[['details','Details'],['pricing','Pricing'],['stock','Stock'],['movement','Movement']]
+      .map(([id,label])=>({label,weight:st.stockTab===id?'700':'500',fg:st.stockTab===id?TXT:SEC,
+        mark:st.stockTab===id?YEL:'transparent',open:()=>this.setState({stockTab:id})}));
+    const facts=[
+      {k:'SKU',v:prod.sku,font:"'IBM Plex Mono',monospace",fg:TXT},
+      {k:'SOLD IN',v:prod.unit,font:"'Public Sans',sans-serif",fg:TXT},
+      {k:'SHELF / BIN',v:prod.bin,font:"'IBM Plex Mono',monospace",fg:TXT},
+      {k:'SUPPLIER',v:prod.supplier,font:"'Public Sans',sans-serif",fg:TXT},
+      {k:'REORDER POINT',v:'80 '+prod.unit+'s',font:"'IBM Plex Mono',monospace",fg:CAU},
+      {k:'REORDER QUANTITY',v:'200 '+prod.unit+'s',font:"'IBM Plex Mono',monospace",fg:TXT},
+      {k:'LEAD TIME',v:'3 days',font:"'IBM Plex Mono',monospace",fg:TXT},
+      {k:'VAT',v:'18% inclusive',font:"'Public Sans',sans-serif",fg:TXT},
+      {k:'LAST COUNTED',v:'22 Jul 2026 · variance −4',font:"'Public Sans',sans-serif",fg:SEC},
+      {k:'BARCODE',v:'RW 4 021884 002',font:"'IBM Plex Mono',monospace",fg:TXT}
+    ];
+
+    const df=st.debtFilter;
+    const dCounts={all:CUSTOMERS.length,overdue:CUSTOMERS.filter(c=>c.status==='overdue'||c.status==='critical').length,
+      week:CUSTOMERS.filter(c=>c.status==='week').length,
+      critical:CUSTOMERS.filter(c=>c.status==='critical').length,
+      current:CUSTOMERS.filter(c=>c.status==='current').length};
+    const debtFilters=[['all','All accounts'],['overdue','Overdue'],['week','Due this week'],['critical','Over limit'],['current','Current']]
+      .map(([id,label])=>({label,count:String(dCounts[id]),
+        bg:df===id?'#2B373D':'#FAFBF7',fg:df===id?'#FAFBF7':TXT,border:df===id?'#2B373D':HAIR,
+        open:()=>this.setState({debtFilter:id})}));
+    const cChip=c=>({current:{chip:'CURRENT',chipBg:'rgba(31,111,74,0.11)',chipFg:GRN},
+      week:{chip:'DUE THIS WEEK',chipBg:'rgba(138,106,23,0.14)',chipFg:CAU},
+      overdue:{chip:'OVERDUE',chipBg:'rgba(179,64,46,0.12)',chipFg:RED},
+      critical:{chip:'OVER LIMIT',chipBg:RED,chipFg:'#FAFBF7'}}[c.status]);
+    const custList=(df==='all'?CUSTOMERS:CUSTOMERS.filter(c=>df==='overdue'?(c.status==='overdue'||c.status==='critical'):c.status===df))
+      .map(c=>{
+        const use=c.balance/c.limit*100;
+        return Object.assign({},c,cChip(c),{
+          balanceF:this.money(c.balance),
+          oldest:c.oldest+' days',
+          ageFg:c.oldest>60?RED:(c.oldest>30?CAU:SEC),
+          usePct:Math.min(use,100).toFixed(0)+'%',
+          useFg:use>=100?RED:(use>=75?CAU:GRN),
+          useLabel:this.plain(c.balance)+' / '+this.plain(c.limit)+' · '+use.toFixed(0)+'%',
+          rowBg:c.status==='critical'?'rgba(179,64,46,0.04)':'transparent',
+          open:()=>this.setState({drawerOpen:true,customerId:c.id,debtTab:'statement'})
+        });
+      });
+
+    const cust=CUSTOMERS.find(c=>c.id===st.customerId)||CUSTOMERS[0];
+    const acc={name:cust.name,trade:cust.trade,phone:cust.phone,ref:'CR-'+cust.id.replace('c','0')+'4',
+      balanceF:this.money(cust.balance),overdueF:this.money(Math.round(cust.balance*0.62))};
+    const debtTabs=[['statement','Statement'],['invoices','Invoices'],['reminders','Reminders']]
+      .map(([id,label])=>({label,weight:st.debtTab===id?'700':'500',fg:st.debtTab===id?TXT:SEC,
+        mark:st.debtTab===id?YEL:'transparent',open:()=>this.setState({debtTab:id})}));
+    const invoices=INVOICES.map(i=>Object.assign({},i,{
+      dueFg:i.state==='over'?RED:SEC,
+      chipBg:i.state==='paid'?'rgba(31,111,74,0.11)':(i.state==='over'?'rgba(179,64,46,0.12)':'rgba(138,106,23,0.14)'),
+      chipFg:i.state==='paid'?GRN:(i.state==='over'?RED:CAU)}));
+    const steps=st.steps.map(s=>({n:s.n,when:s.when,tone:s.tone,channel:s.channel,
+      border:st.stepId===s.id?'#2B373D':HAIR,
+      mark:s.on?(st.stepId===s.id?YEL:'#B9C0B4'):'#E4E7DF',
+      swBg:s.on?'#2B373D':'#E4E7DF',swBorder:s.on?'#2B373D':HAIR,swX:s.on?'19px':'1px',
+      swKnob:s.on?YEL:'#B9C0B4',
+      open:()=>this.setState({stepId:s.id}),
+      toggle:e=>{e.stopPropagation();this.setState({steps:st.steps.map(x=>x.id===s.id?Object.assign({},x,{on:!x.on}):x)});}}));
+    const activeStep=st.steps.find(s=>s.id===st.stepId)||st.steps[0];
+    const body=STEP_BODIES[activeStep.id];
+    const previewText=body.replace('{name}',cust.name.split(' ')[0])
+      .replace('{invoice_no}','INV-3102').replace('{amount}','594,000').replace('{due_date}','18 Aug');
+
+    const scopeItems=this.scopeList();
+    const scopeN=scopeItems.length;
+    const countedKeys=Object.keys(st.counts);
+    const idx=Math.min(st.takeIndex,Math.max(scopeN-1,0));
+    const current=scopeItems[idx]||PRODUCTS[0];
+    const sheet=scopeItems.map((p,i)=>({name:p.name,sku:p.sku,
+      counted:st.counts[p.id]!==undefined?this.plain(st.counts[p.id]):'—',
+      fg:st.counts[p.id]!==undefined?TXT:'#B9C0B4',
+      weight:i===idx?'700':'500',bg:i===idx?'#F0F2EA':'transparent',
+      mark:i===idx?YEL:(st.counts[p.id]!==undefined?GRN:'transparent'),
+      open:()=>this.setState({takeIndex:i,entry:st.counts[p.id]!==undefined?String(st.counts[p.id]):''})}));
+    const keys=['7','8','9','4','5','6','1','2','3','0','00','⌫'].map(k=>({label:k,
+      press:()=>{
+        if(k==='⌫') return this.setState({entry:st.entry.slice(0,-1)});
+        this.setState({entry:(st.entry+k).replace(/^0+(?=\d)/,'').slice(0,6)});
+      }}));
+    const variances=Object.keys(st.counts).map(id=>{
+      const p=PRODUCTS.find(x=>x.id===id); const c=st.counts[id]; const d=c-p.onHand;
+      return {p,d,val:d*p.cost};
+    }).filter(v=>v.d!==0).sort((a,b)=>Math.abs(b.val)-Math.abs(a.val)).map(v=>({
+      name:v.p.name,sku:v.p.sku,book:this.plain(v.p.onHand),counted:this.plain(v.d+v.p.onHand),
+      delta:(v.d>0?'+':'−')+this.plain(Math.abs(v.d)),
+      valueF:(v.d>0?'+':'−')+this.plain(Math.abs(v.val)),fg:v.d>0?GRN:RED,
+      cause:v.d>0?'Received goods not booked in':(Math.abs(v.d)>3?'Breakage in yard or unrecorded sale':'Rounding on split bags')
+    }));
+    const shrink=Object.keys(st.counts).reduce((s,id)=>{
+      const p=PRODUCTS.find(x=>x.id===id);return s+(st.counts[id]-p.onHand)*p.cost;},0);
+    const countedValue=Object.keys(st.counts).reduce((s,id)=>{
+      const p=PRODUCTS.find(x=>x.id===id);return s+p.onHand*p.cost;},0)||1;
+
+    const otherMap={counter:['The Counter is already built','The point-of-sale room — category rail, product tiles and the running basket — lives in the existing prototype.'],
+      cash:['Cash Box — next up','Till, MTN MoMo, Airtel and Bank balances with mobile-money reconciliation. Not designed yet.'],
+      suppliers:['Suppliers — next up','Supplier list with terms and on-time %, purchase orders and goods receipt. Not designed yet.'],
+      team:['Team — next up','Staff sales, the weekly roster, commission rules and the exception report. Not designed yet.'],
+      back:['Back Office is already built','Analytics — KPI band, trend chart, product performance and cash flow — lives in the existing prototype.']};
+    const other=otherMap[room]||['',''];
+
+    return {
+      rooms,tally,
+      roomTitle:{debt:'Debt Book',stock:'Stock Room',counter:'Counter',cash:'Cash Box',suppliers:'Suppliers',team:'Team',back:'Back Office'}[room],
+      roomSub:room==='debt'?'credit accounts & collections':(isStock?'148 SKUs across shop and yard':'Gasabo Hardware & Supply'),
+      isDebt:room==='debt',
+      isStockList:isStock&&!st.takeStep&&st.stockView==='list',
+      isStockDetail:isStock&&!st.takeStep&&st.stockView==='detail',
+      isTakeScope:isStock&&st.takeStep==='scope',
+      isCounting:isStock&&st.takeStep==='count',
+      isReview:isStock&&st.takeStep==='review',
+      isOther:!['debt','stock'].includes(room),
+      otherTitle:other[0],otherNote:other[1],
+      goDebt:()=>this.setState({room:'debt'}),
+
+      debtFilters,customers:custList,drawerOpen:st.drawerOpen,
+      closeDrawer:()=>this.setState({drawerOpen:false}),
+      acc,debtTabs,
+      showStatement:st.debtTab==='statement',showInvoices:st.debtTab==='invoices',showReminders:st.debtTab==='reminders',
+      statement:STATEMENTS.default,invoices,steps,
+      activeStepNo:activeStep.n,activeBody:body,previewText,
+      previewWhen:activeStep.when.toLowerCase(),
+
+      stockFilters,products:filtered,prod,stockTabs,facts,ledger:LEDGER,
+      tabDetails:st.stockTab==='details',tabPricing:st.stockTab==='pricing',
+      tabStock:st.stockTab==='stock',tabMovement:st.stockTab==='movement',
+      backToStock:()=>this.setState({stockView:'list',takeStep:null}),
+      startTake:()=>this.setState({takeStep:'scope',counts:{},takeIndex:0,entry:''}),
+      scopes:SCOPES.map(s=>({label:s.label,note:s.note,count:s.count,time:s.time,
+        border:st.takeScope===s.id?'#2B373D':HAIR,mark:st.takeScope===s.id?YEL:HAIR,
+        open:()=>this.setState({takeScope:s.id})})),
+      beginCount:()=>this.setState({takeStep:'count',takeIndex:0,entry:'',counts:{}}),
+      takeScopeLabel:(SCOPES.find(s=>s.id===st.takeScope)||SCOPES[0]).label,
+      sheet,scopeN,countedN:countedKeys.length,takePos:idx+1,
+      countPct:(countedKeys.length/Math.max(scopeN,1)*100).toFixed(0)+'%',
+      current:{name:current.name,sku:current.sku,unit:current.unit,bin:current.bin},
+      entryShown:st.entry===''?'0':st.entry,
+      entryFg:st.entry===''?'#B9C0B4':TXT,
+      keys,
+      confirm:()=>{
+        const c=Object.assign({},st.counts);
+        c[current.id]=st.entry===''?0:parseInt(st.entry,10);
+        const next=idx+1;
+        if(next>=scopeN) return this.setState({counts:c,takeStep:'review'});
+        this.setState({counts:c,takeIndex:next,entry:''});
+      },
+      skip:()=>{
+        const next=idx+1;
+        if(next>=scopeN) return this.setState({takeStep:'review'});
+        this.setState({takeIndex:next,entry:''});
+      },
+      finishCount:()=>{
+        const c=Object.assign({},st.counts);
+        scopeItems.forEach(p=>{if(c[p.id]===undefined) c[p.id]=self.seedCount(p);});
+        this.setState({counts:c,takeStep:'review'});
+      },
+      backToCount:()=>this.setState({takeStep:'count'}),
+      variances,varianceN:variances.length,hasVariances:variances.length>0,noVariances:variances.length===0,
+      shrinkF:(shrink<0?'− RWF ':'+ RWF ')+this.plain(Math.abs(shrink)),
+      shrinkPct:(Math.abs(shrink)/countedValue*100).toFixed(2)+'%'
+    };
+  }
+}
+
+</script>
+</body>
+</html>
