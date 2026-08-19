@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0")
 
     # JWT / sessions
-    jwt_secret: str = Field(default="local-dev-only-secret-change-me")
+    jwt_secret: str = Field(default="local-dev-only-secret-change-me-please")
     # Local-dev-only Fernet key (see security/crypto.py). Never use this
     # value outside `env=local` — deployment tooling must inject a real
     # per-environment key. Generated once with Fernet.generate_key(); it is

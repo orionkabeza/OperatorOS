@@ -1,0 +1,110 @@
+"""Demo tenant-scoped resource endpoints.
+
+Phase 0 has no real staff-management feature (that's later phases), but
+the cross-tenant isolation suite (spec G.1's build-failing requirement)
+needs *some* real, RLS-and-capability-protected CRUD surface to attack.
+These endpoints are that surface: minimal, real, and exercised end-to-end
+by tests/test_cross_tenant_isolation.py and tests/test_idempotency.py.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+
+from operatoros_api.api.deps import RequestContext, get_current_context, idempotency_key_header, require_capability
+from operatoros_api.idempotency_service import claim_or_replay, complete, fingerprint_request, get_existing
+from operatoros_api.models.tenancy import Role, User, UserLocation
+from operatoros_api.schemas.users import MeOut, UserCreateRequest, UserOut
+from operatoros_api.security.identifiers import hash_identifier
+from operatoros_api.security.passwords import hash_secret
+from sqlalchemy import select
+
+router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+
+def _to_user_out(user: User, role_key: str) -> UserOut:
+    return UserOut(
+        id=user.id, display_name=user.display_name, phone=user.phone,
+        email=user.email, role_key=role_key, status=user.status,
+    )
+
+
+@router.get("/me", response_model=MeOut)
+async def get_me(ctx: RequestContext = Depends(get_current_context)) -> MeOut:
+    user = await ctx.session.get(User, ctx.user_id)
+    assert user is not None
+    return MeOut(
+        id=ctx.user_id, business_id=ctx.business_id, display_name=user.display_name,
+        role_key=ctx.role_key, location_ids=ctx.location_ids,
+    )
+
+
+@router.get("", response_model=list[UserOut])
+async def list_users(ctx: RequestContext = Depends(require_capability("user.manage"))) -> list[UserOut]:
+    result = await ctx.session.execute(select(User))
+    return [_to_user_out(u, u.role.key) for u in result.scalars()]
+
+
+@router.get("/{user_id}", response_model=UserOut)
+async def get_user(
+    user_id: str, ctx: RequestContext = Depends(require_capability("user.manage"))
+) -> UserOut:
+    user = await ctx.session.get(User, user_id)
+    if user is None:
+        # RLS already guarantees a business-B id returns nothing here --
+        # this 404 is the *only* thing a cross-tenant caller ever sees.
+        raise HTTPException(status_code=404, detail="Not found.")
+    return _to_user_out(user, user.role.key)
+
+
+@router.post("", response_model=UserOut, status_code=201)
+async def create_user(
+    body: UserCreateRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("user.manage")),
+) -> UserOut:
+    raw_body = await request.body()
+    fingerprint = fingerprint_request("POST", "/api/v1/users", ctx.business_id, raw_body)
+    claimed_id = await claim_or_replay(
+        ctx.session, business_id=ctx.business_id, key=idempotency_key,
+        endpoint="POST /api/v1/users", fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(
+                status_code=409, detail="This Idempotency-Key was already used for a different request."
+            )
+        return UserOut(**existing.response_body)
+
+    role_result = await ctx.session.execute(
+        select(Role).where(Role.business_id == ctx.business_id, Role.key == body.role_key)
+    )
+    role = role_result.scalar_one_or_none()
+    if role is None:
+        raise HTTPException(status_code=422, detail="Unknown role.")
+
+    user = User(
+        business_id=ctx.business_id,
+        role_id=role.id,
+        display_name=body.display_name,
+        phone=body.phone,
+        phone_hash=hash_identifier(body.phone) if body.phone else None,
+        email=body.email,
+        email_hash=hash_identifier(body.email) if body.email else None,
+        auth_mode="pin",
+        secret_hash=hash_secret(body.secret),
+        status="active",
+    )
+    ctx.session.add(user)
+    await ctx.session.flush()
+
+    for location_id in body.location_ids:
+        ctx.session.add(
+            UserLocation(business_id=ctx.business_id, user_id=user.id, location_id=location_id)
+        )
+
+    out = _to_user_out(user, role.key)
+    await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
+    return out

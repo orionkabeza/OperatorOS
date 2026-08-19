@@ -69,6 +69,48 @@ def decode_access_token(token: str) -> AccessTokenClaims:
     )
 
 
+@dataclass(frozen=True)
+class TotpChallengeClaims:
+    user_id: str
+    business_id: str
+    device_id: str
+
+
+def create_totp_challenge_token(user_id: str, business_id: str, device_id: str) -> str:
+    """Short-lived (5 min), single-purpose token proving "this caller
+    already presented a correct identifier+PIN/password for this user" --
+    issued instead of real tokens when 2FA is required (D.1). It cannot be
+    used as an access token: `type` differs and `decode_access_token`
+    checks it."""
+    settings = get_settings()
+    now = datetime.now(UTC)
+    payload = {
+        "sub": user_id,
+        "business_id": business_id,
+        "device_id": device_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=5)).timestamp()),
+        "jti": str(uuid.uuid4()),
+        "type": "totp_challenge",
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_totp_challenge_token(token: str) -> TotpChallengeClaims:
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except jwt.PyJWTError as exc:
+        raise TokenError("Invalid or expired code challenge.") from exc
+    if payload.get("type") != "totp_challenge":
+        raise TokenError("Invalid or expired code challenge.")
+    return TotpChallengeClaims(
+        user_id=payload["sub"],
+        business_id=payload["business_id"],
+        device_id=payload.get("device_id", ""),
+    )
+
+
 def generate_refresh_token() -> tuple[str, str]:
     """Returns (raw_token_to_send_to_client, sha256_hash_to_store)."""
     raw = secrets.token_urlsafe(48)
