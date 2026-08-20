@@ -422,3 +422,52 @@ no-float-money gate: OK
 **How to apply:** before connecting a real provider, swap `SandboxMomoProvider` for a real implementation of the same `Protocol` and populate real credentials via the existing `momo_provider_credentials`/`encrypt_secret` path — no endpoint or reconciliation-engine changes should be needed. Re-verify the real provider's actual webhook signature scheme matches what's implemented (providers vary) before trusting it in production.
 
 **How to apply:** any new room or heavy, conditionally-used library (chart libraries, other file-format parsers) added to the Shop Floor shell should be wired in via `next/dynamic`, not a static import at the top of `ShopFloor.tsx`/`page.tsx` — the shell's single-route, all-client-side architecture means a static import there ships in the initial bundle regardless of whether the component ever renders.
+
+---
+
+## 2026-08-21 — Phase 2 frontend: reminder schedule builder lives at Debt Book → Reminder schedule, not literally inside Back Office
+
+**Decision:** docs/plans/phase-2.md §4 lists the reminder schedule/template editor as a "Back Office addition," but it's built as a fourth tab on the Debt Book room (`components/debt/ReminderScheduleTab.tsx`, code-split via `next/dynamic`) rather than inside `components/overview/BackOffice.tsx`. Back Office does gain the other two listed additions for real (MoMo "Connect now," the expense approval threshold) in a new Settings tab, which links to the Debt Book location for reminders rather than duplicating the editor.
+
+**Why:** Back Office was Phase 1's Overview room only — a single scrollable analytics column with no settings sub-navigation of its own. The reminder editor is genuinely heavy (a merge-field live-preview panel, a 4-step schedule list, the approval-mode digest) and is also collections-specific state that every other Debt Book screen already reads (`reminderSchedule`, `reminderDigest`) — putting it a full room away from the accounts it governs, behind a settings tab that didn't exist yet, seemed like a worse information architecture than the plan's own literal room assignment implies. Since nothing in the spec requires the editor to be physically inside Back Office (only that a schedule/template editor exists and a Back Office pointer to it does), keeping it co-located with the rest of Debt Book's collections tooling — while still adding a real Back Office Settings tab for the two genuinely Back-Office-shaped settings (a provider connection, a numeric threshold) — was judged the more honest layout.
+
+**Alternatives rejected:** *Build a full Back Office settings sub-nav now and move the editor there.* Rejected as scope creep for this phase — Back Office's own settings information architecture (D.10.6) is a bigger, separate design question than Phase 2's brief covers, and forcing it here risked a worse first cut than deferring it. *Duplicate the editor in both places.* Rejected — two copies of schedule-mutation UI reading/writing the same `reminderSchedule` state is a real source of drift bugs, not just extra code.
+
+**How to apply:** when Back Office gets a real settings sub-nav (D.10.6), this is the natural point to either move the reminder editor there or keep the Debt Book location and drop the current placeholder-link Card in `SettingsTab.tsx` — revisit as a real decision then, not a silent relocation.
+
+---
+
+## 2026-08-21 — Phase 2 frontend: two real `/design` gaps found and fixed while building Debt Book, not worked around
+
+**Decision:** two components/design/* primitives gained real capability, both found by trying to actually build a real screen against them rather than assumed in advance:
+
+1. `Money.tsx`'s `emphasis` prop forced light-mode colors (`text-out`/`text-watch`/`text-in`) even when `surface="dark"`, and the negative-amount case did the same — both fail WCAG AA against `--steel`/`--steel-deep`, the exact contrast problem the existing `-dark` token variants (`in-dark`/`out-dark`/`watch-dark`) already exist to prevent for `Qty` and for `Money`'s own dark-surface non-emphasis case. Nothing before Phase 2 needed `emphasis` on a dark surface — the Debt Book header band's four figures (Owed to you/Overdue/Due this week/Collected this month, D.6) are the first. Fixed by keying `EMPHASIS_CLASS` on surface as well as kind, and by giving the negative case the same dark-surface swap. Covered by three new Money.test.tsx cases.
+2. `ConfirmDialog.tsx` had no way to collect a field before confirming — every prior caller (write-offs included, per the `app/design/page.tsx` demo) only ever needed a message plus an optional typed-confirmation string. D.6.4's write-off flow needs a required reason captured *inside* the same confirmation gate. Rather than build a second, parallel confirm-with-reason component, `ConfirmDialog` gained an optional `children` slot (rendered between the message and the typed-confirmation input) and a `confirmDisabled` prop that adds to, rather than replaces, the existing typed-confirmation lock.
+
+**Why:** per the working agreement ("check `/design` first; add there before using ad-hoc styling elsewhere") — both are genuine capability gaps a real screen surfaced, not cases where an ad-hoc one-off would have been faster. Keeping `emphasis` surface-aware means any future dark-background money figure (e.g. a future Cash Box or Overview card that goes dark) gets correct contrast for free instead of repeating this bug. Keeping the write-off reason field inside `ConfirmDialog` itself (not a separate pre-step dialog) matches the plan's own framing of write-off as one confirmation gate, not two.
+
+**Alternatives rejected:** *Recolor the Debt Book header figures with a wrapper `className` instead of fixing `Money`.* Rejected outright — already documented as not working (`components/design/Money.tsx`'s own inner-span-owns-its-color behavior, confirmed in the 2026-08-20 "`Money`'s `emphasis` prop" entry). *A second `ConfirmDialogWithReason` component.* Rejected — two confirm-gate components with near-identical layout and behavior is exactly the "second thing to keep in sync" class of decision docs/DECISIONS.md's idempotency-store entry warns against for a different subsystem; the same reasoning applies here.
+
+**How to apply:** any future dark-surface money figure needing forced coloring uses `emphasis` directly — never a wrapper `className` recolor attempt, which doesn't reach `Money`'s inner span. Any future confirm-gate needing an extra required field before unlocking uses `ConfirmDialog`'s `children`/`confirmDisabled`, not a bespoke dialog.
+
+---
+
+## 2026-08-21 — Phase 2 frontend: fixed a real, pre-existing Drawer overflow bug at the 375px viewport
+
+**Decision:** `components/design/Drawer.tsx`'s `Dialog.Content` gained `max-w-full` alongside its existing `w-drawer`/`w-drawer-lg` width classes.
+
+**Why:** found by actually driving a real Playwright click at the `mobile-375` viewport project, not by inspection — clicking the Account Drawer's "Write off debt" button (inside the Settings tab) timed out because the button was genuinely off-screen. `w-drawer`/`w-drawer-lg` are literal pixel widths (480px/720px, B.6) with no built-in viewport cap; a `position: fixed`, right-anchored element wider than the viewport renders most of its own content to the *left* of the visible screen, not just clipped at the right edge. This is not a Phase 2-only bug: it affects every existing `size="detail"` drawer app-wide, including Phase 1's Product Detail drawer — Phase 2's Account Drawer is just the first screen whose e2e suite clicked a control far enough into the drawer's content to notice. `max-width: 100%` on a `position: fixed` element resolves against the real viewport (the initial containing block for fixed-position elements), so this shrinks the drawer to fit narrow screens instead of overflowing, with zero effect at any width ≥720px where it was already correctly sized.
+
+**Alternatives rejected:** *A responsive width override (e.g. `sm:w-drawer-lg` starting only above some breakpoint, plain `w-full` below it).* Rejected as more complex than needed — `max-w-full` alone already produces the correct fluid-then-fixed sizing behavior (100% width below 720px, exactly 720px at and above it) without a second breakpoint-specific class to keep in sync with the token's own value.
+
+**How to apply:** any future fixed-width, fixed-position UI (drawers, the existing `w-modal`-sized dialogs, etc.) should carry the same `max-w-full` safety net by default, not just when a bug is found — a fixed pixel width token was never meant to be a promise that content fits every viewport on its own.
+
+---
+
+## 2026-08-21 — Phase 2 frontend: Airtel Money settlements route to the shared "momo" account, not a separate location
+
+**Decision:** the pay-link page's Airtel Money option and `MomoReconciliationTab`'s sandbox settlement both post to `money_locations`' `"momo"` account key — there is no separate `"airtel"` money-location card in the Cash Box balances band.
+
+**Why:** the seeded Cash Box dataset has three money locations (TILL, MOMO, BANK), matching D.7.1's own three example cards and Phase 1's existing `money_location_balance` account-key convention (`"cash"→"till"`, every other payment method keeps its own name). Adding a fourth, Airtel-specific location card was judged unnecessary fixture surface for this phase's actual point (proving the sandbox settlement round-trip and the reconciliation matching engine both work end-to-end) — the two providers share the same "mobile money in the till-adjacent account" story a real deployment would likely also collapse into one ledger account unless a business genuinely holds separate MTN/Airtel merchant balances.
+
+**How to apply:** if a future need requires tracking MTN and Airtel balances separately (e.g. a business that actually reconciles them against two different merchant statements), add an `"airtel"` money location the same way `"momo"` exists today and change `SandboxMomoProvider`'s settlement routing (`lib/mock/store.ts`'s `requestMomoPayment`/`submitPayLink`) and the reconciliation tab's match action to route by `MomoTransaction.provider` instead of hardcoding `"momo"`.

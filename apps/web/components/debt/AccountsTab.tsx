@@ -198,24 +198,32 @@ export function AccountsTab() {
         <div className="grid grid-cols-1 gap-24 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-micro font-semibold uppercase tracking-tracked text-white/60">Owed to you</p>
-            <Money amount={header?.owedToYouMinor ?? minorUnits(0)} size="tally" surface="dark" />
+            <div className="type-expanded font-display">
+              <Money amount={header?.owedToYouMinor ?? minorUnits(0)} size="tally" surface="dark" />
+            </div>
             <p className="text-meta text-white/60">across {header?.owedToYouAccountCount ?? 0} accounts</p>
           </div>
           <div>
             <p className="text-micro font-semibold uppercase tracking-tracked text-white/60">Overdue</p>
-            <Money amount={header?.overdueMinor ?? minorUnits(0)} size="tally" surface="dark" emphasis="out" />
+            <div className="type-expanded font-display">
+              <Money amount={header?.overdueMinor ?? minorUnits(0)} size="tally" surface="dark" emphasis="out" />
+            </div>
             <p className="text-meta text-white/60">
               {header?.overdueAccountCount ?? 0} accounts · oldest {header?.overdueOldestDays ?? 0} days
             </p>
           </div>
           <div>
             <p className="text-micro font-semibold uppercase tracking-tracked text-white/60">Due this week</p>
-            <Money amount={header?.dueThisWeekMinor ?? minorUnits(0)} size="tally" surface="dark" emphasis="watch" />
+            <div className="type-expanded font-display">
+              <Money amount={header?.dueThisWeekMinor ?? minorUnits(0)} size="tally" surface="dark" emphasis="watch" />
+            </div>
             <p className="text-meta text-white/60">{header?.dueThisWeekInvoiceCount ?? 0} invoices</p>
           </div>
           <div>
             <p className="text-micro font-semibold uppercase tracking-tracked text-white/60">Collected this month</p>
-            <Money amount={header?.collectedThisMonthMinor ?? minorUnits(0)} size="tally" surface="dark" emphasis="in" />
+            <div className="type-expanded font-display">
+              <Money amount={header?.collectedThisMonthMinor ?? minorUnits(0)} size="tally" surface="dark" emphasis="in" />
+            </div>
             <p className="text-meta text-white/60">{header?.collectedThisMonthPercentOfCredit ?? 0}% of the month&apos;s credit sales</p>
           </div>
         </div>
