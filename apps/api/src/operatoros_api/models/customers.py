@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from operatoros_api.models.base import Base, TimestampMixin, UUIDPKMixin
@@ -71,6 +71,14 @@ class CustomerBalance(Base, UUIDPKMixin, TimestampMixin):
     oldest_unpaid_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Plan §2: DEBT_WRITTEN_OFF sets balance -> 0 and stamps written_off_at.
+    # `written_off` is a plain derived convenience (`written_off_at is not
+    # None`) stored as its own column rather than computed in every query --
+    # spec D.6.6: "Written-off customers stay visible with a Written off
+    # chip," so this needs to be a fast, indexable filter, not a per-row
+    # Python computation in the accounts-list endpoint.
+    written_off: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    written_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_event_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     updated_at_ledger: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

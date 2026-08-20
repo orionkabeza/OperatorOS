@@ -66,6 +66,16 @@ class Sale(Base, UUIDPKMixin, TimestampMixin):
     credit_override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_event_id: Mapped[str] = mapped_column(String(36), nullable=False)
     reversal_event_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Plan §0.2: set once, at sale time, to `sale.occurred_at + customer.terms_days`
+    # AS THOSE STOOD AT THAT MOMENT -- snapshotted, never a live join to the
+    # customer's current terms, so a later change to the customer's payment
+    # terms doesn't retroactively move an already-issued invoice's due date.
+    # Non-null only for a credit-bearing sale (one with a `credit`-method
+    # payment line); a cash/momo/etc-only sale has no invoice, hence no due
+    # date. A credit sale IS the invoice (no separate `invoices` table) --
+    # this column is what makes the Debt Book's ageing buckets and Invoices
+    # tab possible without one.
+    due_date_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SaleLine(Base, UUIDPKMixin, TimestampMixin):
