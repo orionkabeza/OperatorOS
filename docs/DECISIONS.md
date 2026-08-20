@@ -203,3 +203,118 @@ no-float-money gate: OK
 - *Store TOTP secrets in plaintext, relying on the database's own encryption-at-rest.* Rejected outright — G.1's baseline (encryption at rest, PII minimised) is a floor, not a target, and application-layer encryption of a second-factor seed is cheap insurance against a database-level compromise specifically.
 
 **How to apply:** When mobile-money or EBM credentials are added (Phase 2/5), that's the forcing function to build real per-tenant envelope encryption — `encrypt_secret`/`decrypt_secret`'s call sites don't need to change, only their implementation and `Settings.secret_encryption_key`'s replacement with a per-tenant key lookup.
+
+---
+
+## 2026-08-20 — Phase 1: projection tables split from their entity tables wherever a table needs both direct and event-driven writes
+
+**Decision:** `customer_balance` is its own table (`customer_balances`, models/customers.py), not columns on `customers`. `product_stock` (`product_locations`, models/catalog.py) and the D.5.3 stock ledger (`stock_movements`, models/stock.py) get the full `reject_direct_projection_write()` trigger because — unlike customers — literally every write to them originates from a stock-affecting event; there is no direct-CRUD path into either table at all.
+
+**Why:** `customers` needs ordinary direct-write CRUD (name/phone/terms/status edits) because there is no `CUSTOMER_UPDATED` event in the fixed Phase 0 registry for a simple profile edit — only `CUSTOMER_CREATED` and `CREDIT_LIMIT_CHANGED` exist, and adding a new event type was out of scope this phase. Putting `balance_minor`/`credit_limit_minor` on the same table as those direct writes would force a choice between (a) the trigger blocking ordinary profile edits, or (b) leaving money-shaped state on that table unprotected — neither is acceptable given Phase 0's established invariant ("only the projection framework writes projection tables," docs/DECISIONS.md 2026-08-20 "Projection write protection"). Splitting the table is what keeps that invariant true with zero carve-outs.
+
+**How to apply:** Any future table that needs both directly-writable fields and event-derived money/quantity fields should be split the same way, not merged with a trigger exception.
+
+---
+
+## 2026-08-20 — Phase 1: two payload/plan mismatches resolved without touching the fixed event registry
+
+**Decision:** Two places where plan §2's projection description didn't quite fit the actual (fixed, Phase 0) `events_registry.py` payload shape, resolved by changing *how the events are used*, not the payload schemas:
+
+1. `STOCKTAKE_POSTED`'s payload (`stocktake_id, location_id, variance_value_minor, line_count`) has no per-product quantities, so it cannot itself drive `product_stock`. Posting a stock-take instead appends one `STOCK_ADJUSTED` event per line with a non-zero variance (which *does* drive `product_stock` through the handler every other adjustment uses) plus one `STOCKTAKE_POSTED` summary event for the audit trail. No `product_stock` handler is registered for `STOCKTAKE_POSTED` itself — see projections/product_stock.py's module docstring.
+2. `RETURN_RECORDED`'s payload has no per-line restock flag and no `customer_id` field. `api/routers/sales.py`'s return endpoint puts only the caller-marked-restock lines into the event's `lines` array (damaged lines instead get their own `STOCK_WRITTEN_OFF` event each, matching spec D.4's stated behaviour exactly); `projections/customer_balance.py`'s handler resolves the customer via the original `Sale` row's `customer_id` rather than the event payload.
+
+**Why:** The task brief was explicit that adding new event types or payload fields is out of scope this phase — Phase 0's registry is the fixed contract. Both mismatches are resolved by treating the *action* (posting a stock-take; recording a return) as something that legitimately emits more than one event, which the ledger already supports (spec E.1 has no "one event per action" rule) — not by inventing new payload shapes.
+
+**How to apply:** If a future phase needs `STOCKTAKE_POSTED` or `RETURN_RECORDED` to carry more structured data directly, that's the point to revisit the registry — flagged here as the honest reason this wasn't done now, not silently worked around.
+
+---
+
+## 2026-08-20 — Phase 1: "cash" payments post to the `till` money-location account, not a separate `cash` account
+
+**Decision:** `projections/money_location_balance.py`'s `SALE_RECORDED` handler maps payment method `"cash"` to `account_key = "till"`; every other method (`momo`, `airtel`, `bank`, `card`, `cheque`) keeps its own name as its own account.
+
+**Why:** Spec D.7.1's balances band names the physical cash account "TILL" (`TILL — RWF 340,500`), the same account `DAY_OPENED`/`DAY_CLOSED` reconciles against a physical count. A first pass of this handler used the payment method string directly as the account key, which would have created a same-money-different-name split between "cash sales" and "till count" — caught before shipping by writing the day-close test and finding the numbers didn't line up.
+
+**How to apply:** Any new payment method that should be its own D.7.1-style balances-band card gets its own account_key; anything that's physically "the cash in the drawer" maps to `"till"`.
+
+---
+
+## 2026-08-20 — Phase 1: DAY_OPENED/DAY_CLOSED SET the till balance rather than adjusting it by a delta
+
+**Decision:** `money_location_balance`'s handlers for `DAY_OPENED`/`DAY_CLOSED` assign `balance_minor = counted_amount_minor` directly (an overwrite), unlike every other handler in the file, which only ever adds/subtracts a delta.
+
+**Why:** The whole point of the open/close ritual (spec D.3/D.11) is that a human physically counted real cash and that figure is authoritative over whatever the ledger's running total believes — the same reasoning a bank reconciliation corrects *to* the statement rather than adjusting the statement by a computed delta. Treating it as a correction-to-truth rather than a delta also means any untracked cash movement (a float taken overnight, a miscount) never compounds past one business day — it gets zeroed out at the next physical count.
+
+**How to apply:** Any future "a human counted the real number" event (e.g. a till-session close, if it's ever wired into `money_location_balance` too) should follow the same SET-not-delta pattern, not the ADD pattern most of this file uses.
+
+---
+
+## 2026-08-20 — Phase 1: `daily_totals`/`staff_daily_totals`/`product_daily_movement` key on the open DaySession's business_date, not UTC calendar date
+
+**Decision:** `projections/daily_totals.py` resolves the date to key these three projections on by looking up the currently-OPEN `DaySession` for the event's `(business_id, location_id)`, not `event.occurred_at`'s UTC calendar date. If no open day session exists, the handler raises rather than guessing — this is a real invariant violation (the day must be open for a sale to be recorded at all) and should fail loudly, not silently misfile a total.
+
+**Why:** A shop's trading day is whatever `DAY_OPENED`/`DAY_CLOSED` says it is (spec D.3/D.11's own ritual) — not midnight UTC, which has no relationship to a Kigali shop's actual hours. This also means a day reopened for a late transaction (spec D.11: "Late transactions ... require the day to be reopened") is handled automatically: the reopened session's `status` flips back to `open`, so the same lookup finds it with no extra plumbing.
+
+**How to apply:** Any future projection keyed on "which business day did this happen on" should use the same open-DaySession lookup, not `occurred_at`'s calendar date.
+
+---
+
+## 2026-08-20 — Phase 1: fixed 18%/0% VAT rate, sale-level discount applied post-line-tax, exact-payment-match, no hard till-session requirement
+
+**Decision, four related simplifications in `api/routers/sales.py`, all disclosed rather than silently invented:**
+
+1. **VAT** is a hard-coded `{"standard": 18%, "exempt": 0%}` keyed on `Product.tax_class` — there is no business-configurable tax-rate settings screen yet (spec D.10.6 Settings is out of Phase 1 scope).
+2. **Sale-level `discount_minor`** (as opposed to per-line discounts) is subtracted from the subtotal after each line's own tax has already been computed on that line's pre-sale-discount net price — not redistributed proportionally across lines before tax. A fully accurate discount-before-tax allocation is deferred.
+3. **`payments` must sum to exactly `total_minor`** — no over/under payment accepted by the API. "Change due" (spec D.4: cash given minus what's owed) is a client-side UI computation from a "cash given" figure the API never sees or stores this phase.
+4. **A till session is looked up but not required** for `create_sale` to succeed (`Sale.till_session_id` is nullable) — only the day needs to be open. Spec D.7.5 describes till sessions as the norm, but making one a hard precondition for the MVP "sell a product" path was judged an unnecessary extra dependency; till reconciliation (`api/routers/till.py`) still works correctly whenever a till session IS open, and the tests exercise both with-and-without-till-session paths.
+
+**Why:** All four are genuine Phase 1 MVP scope trims rather than ambiguity resolved by guessing — each is exactly the kind of thing that would be wrong to invent silently for a system handling real money, so each is documented at the point of decision (the same paragraph in `sales.py`'s module docstring) as well as here.
+
+**How to apply:** VAT rates become business-configurable when Settings (D.10.6) lands; the discount/tax ordering should be revisited if margin-erosion reporting (D.10.3) needs to show discount and tax impact separately per line; over/under-payment support (rounding differences, tips, till float top-ups via a sale) would need an explicit product decision on where the difference goes, not just a schema relaxation.
+
+---
+
+## 2026-08-20 — Phase 1: stock-take "freeze during count" is a live query, not a stored flag — a real bug caught by tests
+
+**Decision:** `ProductLocation.frozen` (added to the schema anticipating spec D.5.4's "freeze the counted items" option) is never written or read. Whether a product is frozen is instead answered by `api/routers/stock_stocktake.py::is_frozen_for_stocktake`, a live query for an open, freezing `Stocktake` covering that product/location, called from `sales.py`'s stock check.
+
+**Why:** `product_locations` is protected by `reject_direct_projection_write()` — only `projections/product_stock.py` may write it. The first implementation wrote `loc_row.frozen = True` directly from the stock-take router, which is exactly the class of bug that trigger exists to catch: it raised `InsufficientPrivilegeError` and surfaced as a 500 the moment a test exercised the freeze path (`tests/test_stocktake_and_transfers.py::test_frozen_stocktake_blocks_a_sale_until_posted`, which failed before this fix and passes after). Deriving the frozen state from `Stocktake.status`/`freeze_during_count` instead needs no write to a projection table at all, and "unfreeze" falls out for free the moment the stock-take is posted (the query simply stops matching).
+
+**How to apply:** The dead `frozen` column was left in place (documented in models/catalog.py) rather than spending a further migration to drop it — safe since it's never read or written, but a future cleanup pass could remove it. Any future "temporary state that blocks an action" idea involving a projection table should default to a live query against the table that actually owns that state, the same way, rather than adding a flag to the projection table.
+
+---
+
+## 2026-08-20 — Phase 1: XLSX import via openpyxl, no server-side import staging
+
+**Decision:** CSV/XLSX product import (`product_import.py`, spec D.2 Step 3) uses `openpyxl` for XLSX parsing (added to `apps/api`'s runtime dependencies) and does NOT persist an in-progress import server-side between `/preview` and `/commit` — the client re-sends the (corrected) row set it got back from `/preview`.
+
+**Why:** `openpyxl` is pure Python, never touches macro/VBA content (`load_workbook()` only ever reads the worksheet cell grid), and is the de facto standard for this exact job — `pandas` would also work but pulls in numpy and a much larger dependency surface for a straightforward row-by-row read. No staging table avoids a second expiring-token/cleanup-job story for what is, in practice, an onboarding-sized list (spec D.2's own UI shows "a preview of the first 20 rows") — the cost is the client needing to hold and re-send the full row set, judged acceptable for that size.
+
+**Alternatives rejected:**
+- *`pandas` + `openpyxl`/`xlrd` under the hood.* Rejected — meaningfully heavier dependency for no functional gain here.
+- *A server-side staging table with an import token and TTL.* Rejected for now as more machinery than a first-cut import screen needs; revisit if a business's product list import turns out to be large enough that re-sending the full row set becomes a real problem.
+
+**How to apply:** If a future need (e.g. imports in the thousands of rows, or a resumable import across sessions) makes the no-staging trade-off too costly, add a staging table keyed by an import id with a TTL, matching the idempotency-key table's own pattern (Postgres, not Redis, same reasoning as docs/DECISIONS.md's idempotency-store entry).
+
+---
+
+## 2026-08-20 — Phase 1: two Phase 0 packaging/test-infra gaps fixed in passing
+
+**Decision:** Two issues unrelated to Phase 1 features, discovered while building and running Phase 1's own test suite, fixed rather than worked around:
+
+1. `pgserver` (imported by `tests/conftest.py`, required to run the test suite at all) was missing from `pyproject.toml`'s `dev` dependency list — `pip install -e ".[dev]"`, the RUNBOOK's own documented setup command, could not actually run the suite without it. Added, along with `openpyxl` (needed for this phase's XLSX import).
+2. `tests/conftest.py`'s embedded-Postgres fixture created a temp data directory (`tempfile.mkdtemp(prefix="operatoros_pg_")`) per test session and called `server.cleanup()` on teardown, but never deleted the directory itself — each real Postgres data directory left behind was tens of megabytes. Running this phase's test suite dozens of times over the course of the work left 56 such directories on disk and filled the machine's C: drive to 0 bytes free mid-task, which is what surfaced it. Fixed with an explicit `shutil.rmtree(tmp_dir, ignore_errors=True)` after `server.cleanup()`.
+
+**Why:** Both are exactly the kind of small, unrelated-but-directly-blocking issues worth fixing in passing rather than leaving for someone else to hit blind — the first blocks anyone following the RUNBOOK from scratch, the second silently fills a contributor's or CI runner's disk over time.
+
+**How to apply:** If `pgserver` or a future embedded-service test dependency changes its own cleanup behaviour, re-verify a full test run doesn't leave temp artifacts behind (`ls $TEMP | grep operatoros_pg` should be empty after `pytest` exits).
+
+---
+
+## 2026-08-20 — Phase 1: three new capability keys added to the existing catalogue (not new event types)
+
+**Decision:** `customer.manage`, `return.create`, and `stocktake.post` were added to `capabilities.py`'s `CAPABILITIES`/`DEFAULT_ROLE_CAPABILITIES`, granted to Owner/Manager by default, plus Cashier for `return.create` and Storekeeper for `stocktake.post` (spec F.1's per-role table).
+
+**Why:** `capabilities.py`'s own Phase 0 docstring already documents this as expected, cheap per-phase growth ("the exact bundle membership will be revisited as each phase's features land... a data change, not a mechanism change") — distinct from the events_registry.py event-type freeze the task brief called out explicitly. Customer profile edits/credit-limit changes, recording a return within the normal window, and posting a stock-take all needed a capability distinct from the closest Phase 0 analogues (`user.manage`, `sale.void`, `stock.adjust` respectively) to match spec F.1's actual role boundaries (e.g. a Cashier can process an ordinary return but not write off debt or override a credit limit).
+
+**How to apply:** Same pattern for any future phase's new capability needs — add the key, describe it, assign it in `DEFAULT_ROLE_CAPABILITIES` per spec F.1's table, no schema/mechanism change required.

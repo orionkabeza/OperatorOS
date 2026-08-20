@@ -211,3 +211,65 @@ any other environment must inject real values for both.
   initializes a fresh Postgres data directory, which takes a few seconds;
   subsequent sessions on the same machine are faster once its binaries
   are cached by pip.
+- **Embedded-Postgres temp directories piling up / disk filling over
+  time** — `tests/conftest.py`'s `postgres_urls` fixture deletes its own
+  temp data directory on teardown (`shutil.rmtree`, added in Phase 1 after
+  this exact thing filled a machine's disk to 0 bytes free mid-task). If
+  you interrupt a test run hard enough that teardown never runs (killing
+  the process, a crash), a `operatoros_pg_*` directory can be left behind
+  under your OS temp dir — safe to delete by hand; a fresh one is created
+  every session.
+
+### Phase 1 additions
+
+Phase 1 (`docs/plans/phase-1.md`) added the entity tables, projections,
+and routers that make the Counter/Stock Room/day-close a real POS on top
+of Phase 0's event ledger — no new event types, no new backend setup
+steps beyond the ones above. A few things worth knowing when working in
+this code:
+
+- **Money locations.** `money_location_balance`'s `account_key` for cash
+  is `"till"`, not `"cash"` — a `SALE_RECORDED` payment with
+  `method: "cash"` posts to the `till` account (matching spec D.7.1's
+  named "TILL" balance, the same account `DAY_OPENED`/`DAY_CLOSED`
+  reconciles). Every other payment method (`momo`, `airtel`, `bank`,
+  `card`, `cheque`) keeps its own name as its own account. See
+  `docs/DECISIONS.md`.
+- **A day must be open before a sale can be recorded** — `POST
+  /api/v1/day/open` first (`operatoros_api.api.routers.day`). Selling
+  without an open day returns 409, not 500; a projection handler
+  (`daily_totals.py`) will otherwise raise if it's ever reached with no
+  open `DaySession` for the location, since that's a genuine invariant
+  violation rather than something to guess a date for.
+- **The sale endpoint (`POST /api/v1/sales`) is the most safety-critical
+  route in the codebase.** Read `api/routers/sales.py`'s module docstring
+  before touching it — it documents the four disclosed simplifications
+  (fixed VAT rate, discount/tax ordering, exact-payment-match, no hard
+  till-session requirement) and the credit-limit-override flow. Its
+  dedicated test suite, `tests/test_sales_atomicity.py`, includes the
+  concurrent-double-submit proof (`asyncio.gather`, same shape as Phase
+  0's `test_idempotency.py`) — re-run it after any change to this file.
+- **Stock-take freeze state is not stored on `product_locations`** — see
+  `docs/DECISIONS.md`'s "live query, not a stored flag" entry if you're
+  tempted to add a write there; the `reject_direct_projection_write()`
+  trigger will reject it (correctly).
+- **Product cost/margin fields are visibility-gated** behind the
+  `product.view_cost` capability on every read (`ProductOut.cost_price_minor`
+  is `None`, never a real `0`, when the caller lacks it) — don't add a
+  cost/margin field to a new schema without the same gate.
+- **CSV/XLSX product import** (`POST /api/v1/products/import/preview` →
+  `/commit`) has no server-side staging — the client re-sends the row set
+  `/preview` returned. See `product_import.py`'s module docstring before
+  changing the shape of that round trip.
+- **Known Phase 1 gaps**, disclosed rather than silently missing:
+  binary PDF receipt generation (HTML/text rendering only —
+  `api/routers/receipts.py`); the Overview's historical comparison, gross
+  profit/expenses, and dead-stock ranking (no Analytics/Cash Box/expense
+  data exists until later phases — `api/routers/overview.py`); the
+  nightly projection audit does not cover `daily_totals`/
+  `staff_daily_totals`/`product_daily_movement` (reporting aggregates,
+  not money/inventory integrity — `tasks/projection_audit.py`); stock-take
+  scope has no "not counted in 90 days" option yet
+  (`api/routers/stock_stocktake.py`); unit conversion factors (e.g. "1 box
+  = 12 pieces") are not implemented — products are tracked in one base
+  unit only (`models/catalog.py`).
