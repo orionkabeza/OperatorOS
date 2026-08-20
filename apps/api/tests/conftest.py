@@ -35,6 +35,8 @@ from operatoros_api.main import create_app
 from operatoros_api.models.catalog import Category, Product, Unit
 from operatoros_api.models.customers import Customer
 from operatoros_api.models.day_till import DaySession, TillSession
+from operatoros_api.models.momo import MomoTransaction
+from operatoros_api.models.money_locations import MoneyLocation
 from operatoros_api.models.sales import Quote, QuoteLine, Receipt, Sale
 from operatoros_api.models.stock import Stocktake, StocktakeLine, StockTransfer, StockTransferLine
 from operatoros_api.models.tenancy import Business, Location, Role, User
@@ -155,6 +157,10 @@ class SeededTenant:
     stocktake: Stocktake
     stocktake_line: StocktakeLine
     transfer: StockTransfer
+    # Phase 2 additions -- same reasoning as the Phase 1 block above,
+    # applied to the new resource types this phase's routers introduce.
+    money_location: MoneyLocation
+    momo_transaction: MomoTransaction
 
 
 async def make_tenant(label: str) -> SeededTenant:
@@ -319,6 +325,29 @@ async def make_tenant(label: str) -> SeededTenant:
                 quantity_sent=Decimal("0"),
             )
         )
+
+        money_location = MoneyLocation(
+            business_id=business_id,
+            location_id=location.id,
+            account_key="till",
+            display_name="TILL",
+            kind="till",
+            connection_status="manual",
+        )
+        session.add(money_location)
+
+        momo_transaction = MomoTransaction(
+            business_id=business_id,
+            provider="sandbox_momo",
+            external_id=f"seed-{uuid.uuid4().hex[:12]}",
+            phone=phone,
+            amount_minor=10000,
+            direction="in",
+            occurred_at=now,
+            raw_payload={},
+            status="unmatched",
+        )
+        session.add(momo_transaction)
         await session.flush()
 
     return SeededTenant(
@@ -338,6 +367,8 @@ async def make_tenant(label: str) -> SeededTenant:
         stocktake=stocktake,
         stocktake_line=stocktake_line,
         transfer=transfer,
+        money_location=money_location,
+        momo_transaction=momo_transaction,
     )
 
 

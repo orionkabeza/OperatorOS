@@ -19,7 +19,7 @@ celery_app = Celery(
     "operatoros",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["operatoros_api.tasks.projection_audit"],
+    include=["operatoros_api.tasks.projection_audit", "operatoros_api.tasks.momo_settlement"],
 )
 celery_app.conf.timezone = "UTC"
 celery_app.conf.task_always_eager = False

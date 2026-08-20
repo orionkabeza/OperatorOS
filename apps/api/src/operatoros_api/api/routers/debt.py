@@ -23,14 +23,20 @@ for potentially every customer in the business at once.
 
 from __future__ import annotations
 
-from collections import defaultdict
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 
 from operatoros_api.api.deps import RequestContext, idempotency_key_header, require_capability
+from operatoros_api.debt_ageing import (
+    OpenInvoice,
+    ageing_bucket,
+    auto_allocate,
+    days_overdue,
+    open_invoices_for_business,
+    open_invoices_for_customer,
+)
 from operatoros_api.idempotency_service import (
     claim_or_replay,
     complete,
@@ -40,6 +46,7 @@ from operatoros_api.idempotency_service import (
 from operatoros_api.ledger import EnvelopeValidationError, EventEnvelopeInput, append_event
 from operatoros_api.models.customers import Customer, CustomerBalance
 from operatoros_api.models.events import Event
+from operatoros_api.models.paylink import PayLink
 from operatoros_api.models.payments import PaymentAllocation
 from operatoros_api.models.reminders import ReminderLog
 from operatoros_api.models.sales import Sale, SalePayment
@@ -60,6 +67,8 @@ from operatoros_api.schemas.debt import (
     WriteOffOut,
     WriteOffRequest,
 )
+from operatoros_api.schemas.pay import PayLinkCreateOut, PayLinkCreateRequest
+from operatoros_api.security.tokens import create_pay_link_token
 
 router = APIRouter(prefix="/api/v1/debt", tags=["debt"])
 
@@ -71,131 +80,12 @@ VALID_PAYMENT_METHODS = frozenset({"cash", "momo", "airtel", "bank", "cheque"})
 WRITE_OFF_NAME_CONFIRM_THRESHOLD_MINOR = 5_000_00
 DUE_SOON_DAYS = 7
 
-
-@dataclass
-class OpenInvoice:
-    sale_id: str
-    customer_id: str
-    occurred_at: datetime
-    due_date_at: datetime | None
-    total_minor: int
-    allocated_minor: int
-    remaining_minor: int
-
-
-def _days_overdue(due_date_at: datetime | None, now: datetime) -> int:
-    if due_date_at is None:
-        return 0
-    delta = now.date() - due_date_at.date()
-    return max(delta.days, 0)
-
-
-def _ageing_bucket(days_overdue: int) -> str:
-    if days_overdue <= 0:
-        return "current"
-    if days_overdue <= 30:
-        return "1-30"
-    if days_overdue <= 60:
-        return "31-60"
-    if days_overdue <= 90:
-        return "61-90"
-    return "90+"
-
-
-def _build_open_invoices(sale_rows: list, allocated_by_sale: dict[str, int]) -> list[OpenInvoice]:
-    invoices: list[OpenInvoice] = []
-    for sale_id, customer_id, occurred_at, due_date_at, total_minor in sale_rows:
-        allocated = allocated_by_sale.get(sale_id, 0)
-        remaining = int(total_minor) - int(allocated)
-        if remaining <= 0:
-            continue
-        invoices.append(
-            OpenInvoice(
-                sale_id=sale_id,
-                customer_id=customer_id,
-                occurred_at=occurred_at,
-                due_date_at=due_date_at,
-                total_minor=int(total_minor),
-                allocated_minor=int(allocated),
-                remaining_minor=remaining,
-            )
-        )
-    invoices.sort(
-        key=lambda inv: (
-            inv.due_date_at is None,
-            inv.due_date_at or inv.occurred_at,
-            inv.occurred_at,
-        )
-    )
-    return invoices
-
-
-async def _allocated_by_sale(session, business_id: str) -> dict[str, int]:
-    result = await session.execute(
-        select(PaymentAllocation.sale_id, func.sum(PaymentAllocation.amount_minor))
-        .where(PaymentAllocation.business_id == business_id)
-        .group_by(PaymentAllocation.sale_id)
-    )
-    return {row[0]: int(row[1]) for row in result.all()}
-
-
-async def _open_invoices_for_business(session, business_id: str) -> dict[str, list[OpenInvoice]]:
-    sale_result = await session.execute(
-        select(
-            Sale.id,
-            Sale.customer_id,
-            Sale.created_at,
-            Sale.due_date_at,
-            func.sum(SalePayment.amount_minor),
-        )
-        .join(SalePayment, SalePayment.sale_id == Sale.id)
-        .where(
-            Sale.business_id == business_id,
-            SalePayment.method == "credit",
-            Sale.customer_id.is_not(None),
-        )
-        .group_by(Sale.id, Sale.customer_id, Sale.created_at, Sale.due_date_at)
-    )
-    allocated_by_sale = await _allocated_by_sale(session, business_id)
-    invoices = _build_open_invoices(sale_result.all(), allocated_by_sale)
-    by_customer: dict[str, list[OpenInvoice]] = defaultdict(list)
-    for inv in invoices:
-        by_customer[inv.customer_id].append(inv)
-    return by_customer
-
-
-async def _open_invoices_for_customer(
-    session, business_id: str, customer_id: str
-) -> list[OpenInvoice]:
-    sale_result = await session.execute(
-        select(
-            Sale.id,
-            Sale.customer_id,
-            Sale.created_at,
-            Sale.due_date_at,
-            func.sum(SalePayment.amount_minor),
-        )
-        .join(SalePayment, SalePayment.sale_id == Sale.id)
-        .where(
-            Sale.business_id == business_id,
-            Sale.customer_id == customer_id,
-            SalePayment.method == "credit",
-        )
-        .group_by(Sale.id, Sale.customer_id, Sale.created_at, Sale.due_date_at)
-    )
-    sale_ids_result = await session.execute(
-        select(Sale.id).where(Sale.business_id == business_id, Sale.customer_id == customer_id)
-    )
-    sale_ids = [row[0] for row in sale_ids_result.all()]
-    alloc_result = await session.execute(
-        select(PaymentAllocation.sale_id, func.sum(PaymentAllocation.amount_minor))
-        .where(
-            PaymentAllocation.business_id == business_id, PaymentAllocation.sale_id.in_(sale_ids)
-        )
-        .group_by(PaymentAllocation.sale_id)
-    )
-    allocated_by_sale = {row[0]: int(row[1]) for row in alloc_result.all()}
-    return _build_open_invoices(sale_result.all(), allocated_by_sale)
+# Local aliases so the rest of this file (and its tests) can keep using the
+# names it already had before `debt_ageing.py` was factored out.
+_days_overdue = days_overdue
+_ageing_bucket = ageing_bucket
+_open_invoices_for_business = open_invoices_for_business
+_open_invoices_for_customer = open_invoices_for_customer
 
 
 async def _last_payment_by_customer(session, business_id: str) -> dict[str, datetime]:
@@ -668,14 +558,9 @@ async def take_payment(
 
     allocations: list[tuple[str, int]] = []
     if body.allocation_mode == "auto":
-        remaining_to_allocate = body.amount_minor
-        for inv in open_invoices:
-            if remaining_to_allocate <= 0:
-                break
-            take = min(inv.remaining_minor, remaining_to_allocate)
-            allocations.append((inv.sale_id, take))
-            remaining_to_allocate -= take
-        if remaining_to_allocate > 0:
+        auto_allocations, unallocated = auto_allocate(open_invoices, body.amount_minor)
+        allocations = auto_allocations
+        if unallocated > 0:
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -919,3 +804,81 @@ async def get_chase_queue(
 
     entries.sort(key=lambda e: e.score, reverse=True)
     return entries[:50]
+
+
+# --- pay link (spec D.6.5, plan §0.5) ----------------------------------------
+
+
+@router.post("/accounts/{customer_id}/pay-link", response_model=PayLinkCreateOut, status_code=201)
+async def create_pay_link(
+    customer_id: str,
+    body: PayLinkCreateRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("debt.send_reminder")),
+) -> PayLinkCreateOut:
+    """Mints a signed, single-use, expiring pay-link token (plan §0.5) for
+    this customer -- `amount_minor` defaults to their current full
+    balance, matching D.6.4's "amount (defaults to the full balance)" take-
+    payment default. The full reminder-engine auto-inclusion of a pay link
+    in every scheduled message (D.6.5) lands with the reminder scheduling
+    work; this endpoint is the standalone "generate one now" action the
+    reminder engine will call into, usable on its own already."""
+    raw_body = await request.body()
+    fingerprint = fingerprint_request(
+        "POST", f"/api/v1/debt/accounts/{customer_id}/pay-link", ctx.business_id, raw_body
+    )
+    claimed_id = await claim_or_replay(
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint=f"POST /api/v1/debt/accounts/{customer_id}/pay-link",
+        fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            raise RuntimeError("idempotency row has no response_body despite being complete")
+        return PayLinkCreateOut(**existing.response_body)
+
+    customer = await ctx.session.get(Customer, customer_id)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    amount_minor = body.amount_minor
+    if amount_minor is None:
+        balance_result = await ctx.session.execute(
+            select(CustomerBalance).where(CustomerBalance.customer_id == customer_id)
+        )
+        balance = balance_result.scalar_one_or_none()
+        amount_minor = balance.balance_minor if balance else 0
+    if amount_minor <= 0:
+        raise HTTPException(status_code=422, detail="This customer has no positive balance to pay.")
+
+    expires_at = datetime.now(UTC) + timedelta(days=body.expires_in_days)
+    pay_link = PayLink(
+        business_id=ctx.business_id,
+        location_id=body.location_id,
+        customer_id=customer_id,
+        amount_minor=amount_minor,
+        allocation_hint="auto",
+        expires_at=expires_at,
+        status="pending",
+    )
+    ctx.session.add(pay_link)
+    await ctx.session.flush()
+
+    token = create_pay_link_token(
+        pay_link_id=pay_link.id, business_id=ctx.business_id, expires_at=expires_at
+    )
+
+    out = PayLinkCreateOut(
+        token=token, amount_minor=amount_minor, expires_at=expires_at.isoformat()
+    )
+    await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
+    return out

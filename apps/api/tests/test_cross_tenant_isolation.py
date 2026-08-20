@@ -48,6 +48,9 @@ RESOURCE_ID_SEEDS: dict[str, Callable[[SeededTenant], str]] = {
     "stocktake_id": lambda t: t.stocktake.id,
     "line_id": lambda t: t.stocktake_line.id,
     "transfer_id": lambda t: t.transfer.id,
+    # Phase 2 additions -- see tests/conftest.py::make_tenant.
+    "money_location_id": lambda t: t.money_location.id,
+    "transaction_id": lambda t: t.momo_transaction.id,
 }
 
 
@@ -154,6 +157,8 @@ async def test_cross_tenant_isolation_every_protected_route(
             tenant_b.stocktake.id,
             tenant_b.stocktake_line.id,
             tenant_b.transfer.id,
+            tenant_b.money_location.id,
+            tenant_b.momo_transaction.id,
         )
         return any(marker in text for marker in markers)
 

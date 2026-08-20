@@ -24,12 +24,15 @@ from redis import asyncio as redis_asyncio
 
 from operatoros_api.api.routers import (
     auth,
+    cashbox,
     customers,
     day,
     debt,
     events,
     health,
+    momo,
     overview,
+    pay,
     products,
     products_import,
     receipts,
@@ -98,6 +101,9 @@ def create_app(redis_client: Any = None) -> FastAPI:
     app.include_router(receipts.router)
     app.include_router(overview.router)
     app.include_router(debt.router)
+    app.include_router(momo.router)
+    app.include_router(cashbox.router)
+    app.include_router(pay.router)
 
     return app
 
