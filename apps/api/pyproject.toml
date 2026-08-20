@@ -1,0 +1,95 @@
+[project]
+name = "operatoros-api"
+version = "0.1.0"
+description = "OperatorOS backend API — tenancy, auth, and the event ledger"
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+license = { text = "Proprietary" }
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.32,<1.0",
+    "sqlalchemy>=2.0.36,<3.0",
+    "asyncpg>=0.30,<1.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "alembic>=1.14,<2.0",
+    "pydantic>=2.9,<3.0",
+    "pydantic-settings>=2.6,<3.0",
+    "argon2-cffi>=23.1,<24.0",
+    "pyjwt>=2.9,<3.0",
+    "pyotp>=2.9,<3.0",
+    "redis>=5.2,<6.0",
+    "celery>=5.4,<6.0",
+    "uuid6>=2024.7.10",
+    "python-multipart>=0.0.12",
+    "structlog>=24.4,<25.0",
+    "cryptography>=50.0,<51.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0,<10.0",
+    "pytest-asyncio>=1.0,<2.0",
+    "pytest-cov>=6.0,<7.0",
+    "httpx>=0.27,<1.0",
+    "ruff>=0.7,<1.0",
+    "black>=26.3,<27.0",
+    "mypy>=1.13,<2.0",
+    "bandit[toml]>=1.7,<2.0",
+    "pip-audit>=2.7,<3.0",
+    "fakeredis>=2.26,<3.0",
+    "freezegun>=1.5,<2.0",
+    "types-redis",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+# E501: line length, handled by black.
+# B008: "no function call in argument defaults" -- the standard bugbear
+# rule for mutable-default-argument bugs. FastAPI's dependency injection
+# is built entirely on `param: T = Depends(...)`, evaluated per-request by
+# FastAPI's own introspection, not as a normal Python default value -- the
+# bug B008 warns about does not apply. Ignoring it repo-wide is the
+# accepted pattern for FastAPI projects rather than restructuring every
+# route handler.
+ignore = ["E501", "B008"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = ["tests/", "alembic/"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "alembic"]
+
+[tool.money_lint]
+# Enforced by scripts/check_no_float_money.py — see docs/DECISIONS.md.
+# Money values must use Minor (NewType(int)) / BIGINT minor units. Any
+# `float` annotation or literal near a money-named symbol fails CI.
+description = "no-float-money gate config lives in scripts/check_no_float_money.py"

@@ -1,0 +1,75 @@
+name: operatoros
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: operatoros_admin
+      POSTGRES_PASSWORD: operatoros_admin_dev_only
+      POSTGRES_DB: operatoros
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U operatoros_admin -d operatoros"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: ../../infra/Dockerfile.api
+    environment:
+      OPERATOROS_ENV: local
+      OPERATOROS_DATABASE_URL: postgresql+asyncpg://operatoros_app:operatoros_app_dev_only@postgres:5432/operatoros
+      OPERATOROS_DATABASE_URL_MIGRATE: postgresql+psycopg://operatoros_admin:operatoros_admin_dev_only@postgres:5432/operatoros
+      OPERATOROS_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "operatoros_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ../apps/api/src:/app/src
+
+  worker:
+    build:
+      context: ../apps/api
+      dockerfile: ../../infra/Dockerfile.api
+    environment:
+      OPERATOROS_ENV: local
+      OPERATOROS_DATABASE_URL: postgresql+asyncpg://operatoros_app:operatoros_app_dev_only@postgres:5432/operatoros
+      OPERATOROS_DATABASE_URL_MIGRATE: postgresql+psycopg://operatoros_admin:operatoros_admin_dev_only@postgres:5432/operatoros
+      OPERATOROS_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Embedded beat (`-B`) is a Phase 0 simplification -- a single worker
+    # process runs both the task consumer and the beat scheduler. Splitting
+    # beat into its own service/process is a production-hardening step
+    # (no HA story for a single beat instance otherwise), tracked in
+    # docs/DECISIONS.md, not needed for local dev.
+    command: ["celery", "-A", "operatoros_api.tasks.celery_app", "worker", "-B", "--loglevel=INFO"]
+    volumes:
+      - ../apps/api/src:/app/src
+
+volumes:
+  pgdata:

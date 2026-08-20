@@ -18,6 +18,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+*.egg-info/
+.coverage
+htmlcov/
 
 # Env / secrets
 .env
