@@ -28,9 +28,12 @@ test("full sign-in flow: shutter -> two-factor -> Onboarding -> Shop Floor -> ro
   await signInAndReachCounter(page);
   await expect(page.getByText("TAKEN TODAY")).toBeVisible();
 
+  // Debt Book is a real, ledger-backed room as of Phase 2 (docs/plans/
+  // phase-2.md) — this now checks the real header band instead of the
+  // Phase 1 EmptyState placeholder copy the room used to show.
   await page.getByRole("button", { name: "Debt Book" }).click();
   await expect(page.getByRole("heading", { name: "Debt Book" })).toBeVisible();
-  await expect(page.getByText("No one owes you anything right now")).toBeVisible();
+  await expect(page.getByText("Owed to you")).toBeVisible();
 
   expect(errors).toEqual([]);
 });

@@ -1,6 +1,18 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import clsx from "clsx";
 
+/**
+ * `max-w-full` (added in Phase 2): the `w-drawer`/`w-drawer-lg` tokens are
+ * literal pixel widths (480px/720px, per B.6) with no built-in viewport
+ * cap. `max-width: 100%` resolves against the initial containing block for
+ * a `position: fixed` element — i.e. the real viewport — so this correctly
+ * shrinks the drawer to fit narrow screens instead of overflowing off the
+ * left edge (a genuine, pre-existing bug affecting every `size="detail"`
+ * drawer at ≤720px width, including Phase 1's Product Detail drawer; found
+ * building Phase 2's Account Drawer when a real Playwright click on a
+ * far-left "Write off debt" button failed at the 375px viewport project
+ * because the button was rendered off-screen).
+ */
 export function Drawer({
   open,
   onOpenChange,
@@ -23,7 +35,7 @@ export function Drawer({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-steel-deep/40" />
         <Dialog.Content
           className={clsx(
-            "fixed inset-y-0 right-0 z-40 flex h-screen flex-col border-l border-rule bg-paper",
+            "fixed inset-y-0 right-0 z-40 flex h-screen max-w-full flex-col border-l border-rule bg-paper",
             "motion-safe:data-[state=open]:animate-drawer-slide-in",
             size === "detail" ? "w-drawer-lg" : "w-drawer",
           )}

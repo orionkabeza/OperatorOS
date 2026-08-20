@@ -29,7 +29,12 @@ export function BalancesTab() {
 
   return (
     <div className="flex flex-col gap-16">
-      <div className="grid grid-cols-1 gap-16 sm:grid-cols-2 lg:grid-cols-3">
+      {/* md: (768px), not sm: (375px) — each card carries a tally-sized Money
+          figure plus a button; 2-up at exactly 375px was cramped enough for
+          a Card's own bounding box to overlap its neighbor and intercept
+          clicks meant for the sibling's "Update balance" button, caught by
+          a real Playwright click at the mobile-375 viewport project. */}
+      <div className="grid grid-cols-1 gap-16 md:grid-cols-2 lg:grid-cols-3">
         {(locations ?? []).map((loc) => (
           <Card key={loc.accountKey} eyebrow={loc.kind.toUpperCase()} title={loc.displayName}>
             <Money amount={loc.balanceMinor} size="card-title" />
