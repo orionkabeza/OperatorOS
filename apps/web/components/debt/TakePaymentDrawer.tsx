@@ -1,7 +1,7 @@
 "use client";
 
 import { minorUnits, type MinorUnits } from "@operatoros/shared";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/design/Button";
 import { Drawer } from "@/components/design/Drawer";
 import { Input } from "@/components/design/Input";
@@ -11,6 +11,7 @@ import { autoAllocate, validateManualAllocation, type AllocatableInvoice } from 
 import type { DebtAccountSummary, PaymentMethod } from "@/lib/api/types";
 import { useMoneyLocations } from "@/lib/queries/cashbox";
 import { useInvoices, useTakePayment } from "@/lib/queries/debt";
+import { useRequestMomoPayment } from "@/lib/queries/momo";
 import { useToastStore } from "@/lib/toast-store";
 
 const METHODS: { id: PaymentMethod; label: string }[] = [
@@ -27,7 +28,21 @@ export function TakePaymentDrawer({ account, onClose }: { account: DebtAccountSu
   const { data: invoices } = useInvoices(customerId);
   const { data: moneyLocations } = useMoneyLocations();
   const takePayment = useTakePayment();
+  const requestMomoPayment = useRequestMomoPayment();
   const pushToast = useToastStore((s) => s.push);
+
+  // D.6.5/docs/DECISIONS.md §0.3 — pushing a request to the sandbox MoMo
+  // provider is a genuinely separate sub-flow from manual entry: it
+  // completes the whole payment on its own once the customer approves (the
+  // store's own takePayment call happens inside the settlement, not here),
+  // so the regular amount/allocation form below is disabled while a
+  // request is in flight to avoid double-recording the same payment.
+  const [requestPhone, setRequestPhone] = useState("");
+  const [requestState, setRequestState] = useState<"idle" | "waiting">("idle");
+
+  useEffect(() => {
+    if (account) setRequestPhone(account.customer.phone);
+  }, [account]);
 
   const [amountMajor, setAmountMajor] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
@@ -53,7 +68,11 @@ export function TakePaymentDrawer({ account, onClose }: { account: DebtAccountSu
   );
   const manualValidation = useMemo(() => validateManualAllocation(amountMinor, manualAllocations, openInvoices), [amountMinor, manualAllocations, openInvoices]);
 
-  const canSubmit = amountMinor > 0 && (mode === "auto" ? true : manualValidation.valid) && (!backdating || (backdateUnlocked && backdateDate && backdateReason.trim()));
+  const canSubmit =
+    requestState === "idle" &&
+    amountMinor > 0 &&
+    (mode === "auto" ? true : manualValidation.valid) &&
+    (!backdating || (backdateUnlocked && backdateDate && backdateReason.trim()));
 
   function reset() {
     setAmountMajor("");
@@ -67,6 +86,30 @@ export function TakePaymentDrawer({ account, onClose }: { account: DebtAccountSu
     setBackdateUnlocked(false);
     setBackdateDate("");
     setBackdateReason("");
+    setRequestPhone("");
+    setRequestState("idle");
+  }
+
+  async function handleRequestMomoPayment() {
+    if (!customerId || !account) return;
+    setRequestState("waiting");
+    try {
+      await requestMomoPayment.mutateAsync({ customerId, amountMinor, phone: requestPhone || account.customer.phone });
+      pushToast({ message: `Payment request sent to ${requestPhone || account.customer.phone}. Waiting for approval…` });
+      // The sandbox settlement (lib/mock/store.ts's requestMomoPayment) lands
+      // and auto-matches ~3s after the request — this mirrors that timing
+      // to close the loop in the UI rather than leaving the drawer stuck on
+      // "waiting" with no further signal (a real webhook-driven UI would
+      // instead subscribe/poll; the mock has no push channel to the client).
+      setTimeout(() => {
+        pushToast({ message: `Payment of RWF ${(amountMinor / 100).toLocaleString()} received from ${account.customer.name} via MoMo.` });
+        reset();
+        onClose();
+      }, 3_500);
+    } catch (err) {
+      pushToast({ message: err instanceof Error ? err.message : "Could not send the payment request." });
+      setRequestState("idle");
+    }
   }
 
   async function handleSubmit() {
@@ -116,7 +159,16 @@ export function TakePaymentDrawer({ account, onClose }: { account: DebtAccountSu
           >
             Cancel
           </Button>
-          <Button variant="primary" disabled={!canSubmit || submitting} disabledReason="Enter a valid amount and complete the allocation before recording the payment." onClick={() => void handleSubmit()}>
+          <Button
+            variant="primary"
+            disabled={!canSubmit || submitting}
+            disabledReason={
+              requestState !== "idle"
+                ? "A sandbox payment request is in progress — it will complete on its own."
+                : "Enter a valid amount and complete the allocation before recording the payment."
+            }
+            onClick={() => void handleSubmit()}
+          >
             {submitting ? "Recording…" : "Record payment"}
           </Button>
         </>
@@ -148,13 +200,46 @@ export function TakePaymentDrawer({ account, onClose }: { account: DebtAccountSu
             </div>
           </label>
 
+          {method === "momo" || method === "airtel" ? (
+            <div className="flex flex-col gap-8 rounded border border-rule p-12">
+              <p className="text-meta text-ink-soft">
+                Push a payment request to the customer&apos;s phone via the sandbox {method === "momo" ? "MTN MoMo" : "Airtel Money"} provider — settles automatically once approved (see docs/DECISIONS.md&apos;s sandbox seam entry).
+              </p>
+              <label className="flex flex-col gap-4">
+                <span className="text-micro font-semibold uppercase tracking-tracked text-ink-soft">Customer phone</span>
+                <input
+                  value={requestPhone}
+                  onChange={(e) => setRequestPhone(e.target.value)}
+                  disabled={requestState !== "idle"}
+                  className="h-control rounded border border-rule bg-paper px-8 text-table text-ink disabled:text-ink-soft"
+                />
+              </label>
+              <Button
+                variant="secondary"
+                disabled={amountMinor <= 0 || requestState !== "idle"}
+                disabledReason={amountMinor <= 0 ? "Enter an amount first." : "A request is already in progress."}
+                onClick={() => void handleRequestMomoPayment()}
+              >
+                {requestState === "waiting" ? "Waiting for approval…" : "Request payment (sandbox)"}
+              </Button>
+              {requestState === "waiting" ? (
+                <p role="status" className="text-meta text-ink-soft">
+                  This will complete on its own once the customer approves — no need to also record it manually below.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {method !== "cash" ? (
             <label className="flex flex-col gap-4">
-              <span className="text-micro font-semibold uppercase tracking-tracked text-ink-soft">Transaction reference</span>
+              <span className="text-micro font-semibold uppercase tracking-tracked text-ink-soft">
+                {method === "momo" || method === "airtel" ? "Transaction reference (only if not using the request above)" : "Transaction reference"}
+              </span>
               <input
                 value={transactionRef}
                 onChange={(e) => setTransactionRef(e.target.value)}
-                className="h-control rounded border border-rule bg-paper px-8 font-mono text-table text-ink"
+                disabled={requestState !== "idle"}
+                className="h-control rounded border border-rule bg-paper px-8 font-mono text-table text-ink disabled:text-ink-soft"
               />
             </label>
           ) : null}

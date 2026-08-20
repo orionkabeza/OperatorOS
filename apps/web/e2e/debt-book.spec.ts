@@ -81,6 +81,37 @@ test("write-off above the confirmation threshold requires a reason and the typed
   await expect(page.getByText(/written off for Kigali Builders Ltd/).first()).toBeVisible();
 });
 
+test("MoMo sandbox round trip: requesting a payment settles automatically and updates the account balance", async ({ page }) => {
+  await goToDebtBook(page);
+
+  // Jean-Paul Nzeyimana owes RWF 45,000 on a single invoice — request the
+  // full amount via the sandbox MoMo provider rather than entering it manually.
+  await page.getByText("Jean-Paul Nzeyimana").first().click();
+  await page.getByRole("button", { name: "Record payment" }).click();
+  await expect(page.getByText(/Take payment — Jean-Paul Nzeyimana/)).toBeVisible();
+
+  await page.getByLabel("Amount").fill("45000");
+  await page.getByRole("button", { name: "MoMo", exact: true }).click();
+  await expect(page.getByLabel("Customer phone")).toHaveValue("+250788333444");
+
+  await page.getByRole("button", { name: "Request payment (sandbox)" }).click();
+  // .first() — Radix Toast duplicates its message into an aria-live announcer for screen readers.
+  await expect(page.getByText(/Payment request sent to \+250788333444/).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Waiting for approval…" })).toBeVisible();
+
+  // The sandbox settles ~3s later (lib/mock/store.ts) and the drawer closes itself.
+  await expect(page.getByText(/Payment of RWF 45,000 received from Jean-Paul Nzeyimana via MoMo/).first()).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText(/Take payment — Jean-Paul Nzeyimana/)).toHaveCount(0);
+
+  // The account's balance should now read zero — the whole payment settled
+  // and auto-allocated against the one open invoice. getByLabel (not
+  // getByText) targets Money's own aria-label specifically — the credit-
+  // limit-usage caption in the same row also contains the literal text
+  // "RWF 0" ("RWF 0 / 300,000 · 0%"), which getByText would ambiguously match too.
+  const row = page.locator("tr", { hasText: "Jean-Paul Nzeyimana" });
+  await expect(row.getByLabel("RWF 0", { exact: true })).toBeVisible();
+});
+
 test("chase today queue lists overdue accounts and a snooze action removes one from the list", async ({ page }) => {
   await goToDebtBook(page);
   await page.getByRole("tab", { name: /Chase today/ }).click();
