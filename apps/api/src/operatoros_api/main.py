@@ -26,6 +26,7 @@ from operatoros_api.api.routers import (
     auth,
     customers,
     day,
+    debt,
     events,
     health,
     overview,
@@ -96,6 +97,7 @@ def create_app(redis_client: Any = None) -> FastAPI:
     app.include_router(till.router)
     app.include_router(receipts.router)
     app.include_router(overview.router)
+    app.include_router(debt.router)
 
     return app
 

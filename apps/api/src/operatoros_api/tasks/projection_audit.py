@@ -74,6 +74,7 @@ async def _audit_money_location_balance(session: AsyncSession, business_id: str)
                     "SALE_RECORDED",
                     "DAY_OPENED",
                     "DAY_CLOSED",
+                    "PAYMENT_RECEIVED",
                 ]
             ),
         )
@@ -161,7 +162,9 @@ async def _audit_customer_balance(session: AsyncSession, business_id: str) -> li
         select(Event)
         .where(
             Event.business_id == business_id,
-            Event.type.in_(["SALE_RECORDED", "RETURN_RECORDED"]),
+            Event.type.in_(
+                ["SALE_RECORDED", "RETURN_RECORDED", "PAYMENT_RECEIVED", "DEBT_WRITTEN_OFF"]
+            ),
         )
         .order_by(Event.occurred_at)
     )

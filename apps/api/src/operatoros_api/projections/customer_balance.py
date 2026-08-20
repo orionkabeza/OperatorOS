@@ -2,7 +2,12 @@
 
 Driven by `CUSTOMER_CREATED` (creates the balance row), `CREDIT_LIMIT_CHANGED`
 (sets `credit_limit_minor`), `SALE_RECORDED` (a credit-method payment line
-raises the balance), and `RETURN_RECORDED` (a credit-note refund lowers it).
+raises the balance), `RETURN_RECORDED` (a credit-note refund lowers it),
+and, as of plan §2, `PAYMENT_RECEIVED` (lowers the balance -- the debt-book
+half of the same event `money_location_balance.py`'s own `PAYMENT_RECEIVED`
+handler moves money for, in the same transaction, same pattern
+`SALE_RECORDED` already uses across both projections) and
+`DEBT_WRITTEN_OFF` (balance -> 0, `written_off`/`written_off_at` set).
 
 **`oldest_unpaid_at` is a simplified Phase 1 approximation.** Spec E.3
 defines it as part of the projection, but the real ageing calculation
@@ -63,6 +68,14 @@ def _apply_balance_delta(row: CustomerBalance, delta_minor: int, event: Event) -
     is_positive = row.balance_minor > 0
     if not was_positive and is_positive:
         row.oldest_unpaid_at = event.occurred_at
+        # A customer who owes money again after a write-off has, by
+        # definition, walked back in and bought on credit again (spec
+        # D.6.6: "they walk back in eventually") -- this new debt is not
+        # the debt that got written off, so the "Written off" status chip
+        # (D.6.2) should reflect their CURRENT standing, not a historical
+        # event. The write-off itself remains a permanent fact in the event
+        # log regardless.
+        row.written_off = False
     elif was_positive and not is_positive:
         row.oldest_unpaid_at = None
     row.last_event_id = event.id
@@ -110,11 +123,62 @@ async def on_return_recorded_balance(session: AsyncSession, event: Event) -> Non
     _apply_balance_delta(row, -int(payload["refund_amount_minor"]), event)
 
 
+@register_projection("PAYMENT_RECEIVED")
+async def on_payment_received_balance(session: AsyncSession, event: Event) -> None:
+    """Plan §0.1/§2: the debt-book half of `PAYMENT_RECEIVED` -- lowers the
+    customer's balance. The money-location half
+    (projections/money_location_balance.py::on_payment_received_money)
+    raises the till/momo/bank balance for the SAME event, in the SAME
+    transaction (projections/framework.py::apply_projections runs every
+    handler registered for one event type inside one `SET LOCAL
+    app.projection_writer` window, itself inside the caller's own
+    transaction) -- either both happen or neither does. See
+    tests/test_debt_payment_atomicity.py for the proof, mirroring
+    tests/test_projection_transactional.py's pattern for SALE_RECORDED.
+
+    Supplier payments (`payload.supplier_id` set, `customer_id` absent)
+    don't touch `customer_balance` at all -- `PAYMENT_MADE`, not
+    `PAYMENT_RECEIVED`, is the supplier-payment event type, and stays
+    unwired this phase (plan §0.1, D.8.4/Phase 3). A `PAYMENT_RECEIVED`
+    with no `customer_id` (e.g. "other income", D.7.3) is a pure
+    money-location-only event -- nothing to do here.
+    """
+    payload = event.payload
+    customer_id = payload.get("customer_id")
+    if not customer_id:
+        return
+    row = await _get_or_create_locked(session, event.business_id, customer_id)
+    _apply_balance_delta(row, -int(payload["amount_minor"]), event)
+
+
+@register_projection("DEBT_WRITTEN_OFF")
+async def on_debt_written_off(session: AsyncSession, event: Event) -> None:
+    """Spec D.6.6: writes off the customer's CURRENT balance to zero and
+    marks the customer `written_off` -- a loss, not a payment; no money
+    moves in `money_location_balance` (there is no corresponding handler
+    there, deliberately -- see that module). `payload.amount_minor` is the
+    amount being written off as recorded by the caller
+    (`api/routers/debt.py`); the balance is set to exactly zero rather than
+    decremented by that amount so a write-off can never leave a stray
+    residual balance if the two figures ever drifted (e.g. a payment
+    landing between the drawer opening and the write-off being confirmed).
+    """
+    payload = event.payload
+    row = await _get_or_create_locked(session, event.business_id, payload["customer_id"])
+    row.balance_minor = 0
+    row.oldest_unpaid_at = None
+    row.written_off = True
+    row.written_off_at = event.occurred_at
+    row.last_event_id = event.id
+    row.updated_at_ledger = event.occurred_at
+
+
 def recompute_from_events(
     events: list[Event], sale_customer_ids: dict[str, str | None]
 ) -> dict[tuple[str, str], int]:
     """Pure recomputation used by the nightly audit task and by tests:
-    replays `SALE_RECORDED`/`RETURN_RECORDED` in order and returns
+    replays `SALE_RECORDED`/`RETURN_RECORDED`/`PAYMENT_RECEIVED`/
+    `DEBT_WRITTEN_OFF` in order and returns
     `{(business_id, customer_id): balance_minor}`.
 
     `sale_customer_ids` (`{sale_id: customer_id}`) is the one piece of
@@ -125,6 +189,12 @@ def recompute_from_events(
     single light query over `sales`; tests build it directly. This keeps
     the actual balance arithmetic here pure and independent of DB access,
     even though the full audit isn't quite DB-access-free end to end.
+
+    `DEBT_WRITTEN_OFF` sets the balance to exactly zero rather than
+    decrementing it (mirroring `on_debt_written_off` above) — a plain
+    running-delta replay would otherwise diverge from the live projection
+    the instant a write-off's recorded `amount_minor` differs even slightly
+    from the balance at the moment it was applied.
     """
     balances: dict[tuple[str, str], int] = {}
 
@@ -150,5 +220,12 @@ def recompute_from_events(
             if not customer_id:
                 continue
             _bump(event.business_id, customer_id, -int(payload["refund_amount_minor"]))
+        elif event.type == "PAYMENT_RECEIVED":
+            customer_id = payload.get("customer_id")
+            if not customer_id:
+                continue
+            _bump(event.business_id, customer_id, -int(payload["amount_minor"]))
+        elif event.type == "DEBT_WRITTEN_OFF":
+            balances[(event.business_id, payload["customer_id"])] = 0
 
     return balances

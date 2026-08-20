@@ -56,6 +56,20 @@ CAPABILITIES: dict[str, str] = {
     "return.create": "Record a return (within the normal window).",
     "customer.manage": "Edit a customer's profile or change their credit limit.",
     "stocktake.post": "Post a stock-take (write the correction movements).",
+    # --- Phase 2 additions (plan §3). Same pattern as the Phase 1 block
+    # above: events_registry.py is fixed this phase, these are new
+    # capability keys layered on the existing mechanism, not new event
+    # types. ---
+    "debt.take_payment": "Take a payment against a customer's debt account.",
+    "debt.back_date_payment": "Record a debt payment with a back-dated received date.",
+    "debt.contact_log": "Log a call or other contact with a customer.",
+    "debt.manage_reminders": "Configure reminder schedules, templates, and the pause switch.",
+    "debt.send_reminder": "Send or approve a queued reminder / broadcast.",
+    "cashbox.manage": "Manually update a money location's balance; configure connections.",
+    "momo.connect": "Connect or disconnect a mobile-money provider.",
+    "momo.reconcile": "Match, dismiss, or otherwise act on MoMo reconciliation rows.",
+    "expense.record": "Record an expense.",
+    "expense.approve": "Approve or reject an expense above the approval threshold.",
 }
 
 DEFAULT_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -84,14 +98,41 @@ DEFAULT_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "return.create",
             "customer.manage",
             "stocktake.post",
+            "debt.take_payment",
+            "debt.back_date_payment",
+            "debt.contact_log",
+            "debt.manage_reminders",
+            "debt.send_reminder",
+            "cashbox.manage",
+            "momo.connect",
+            "momo.reconcile",
+            "expense.record",
+            "expense.approve",
         }
     ),
-    "cashier": frozenset({"sale.create", "till.open", "till.close", "return.create"}),
+    "cashier": frozenset(
+        {
+            "sale.create",
+            "till.open",
+            "till.close",
+            "return.create",
+            "debt.take_payment",
+            "debt.contact_log",
+            "expense.record",
+        }
+    ),
     "storekeeper": frozenset(
         {"stock.adjust", "stock.transfer", "product.manage", "stocktake.post"}
     ),
     "bookkeeper": frozenset(
-        {"report.view", "data.export", "product.view_cost", "debt.credit_override"}
+        {
+            "report.view",
+            "data.export",
+            "product.view_cost",
+            "debt.credit_override",
+            "momo.reconcile",
+            "expense.record",
+        }
     ),
     "viewer": frozenset({"report.view"}),
 }

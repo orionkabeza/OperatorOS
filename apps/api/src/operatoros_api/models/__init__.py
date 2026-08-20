@@ -13,6 +13,7 @@ from operatoros_api.models.projections import (
     ProductDailyMovement,
     StaffDailyTotals,
 )
+from operatoros_api.models.reminders import ReminderLog
 from operatoros_api.models.sales import (
     Quote,
     QuoteLine,
@@ -90,4 +91,5 @@ __all__ = [
     "ProductDailyMovement",
     "MoneyLocation",
     "PaymentAllocation",
+    "ReminderLog",
 ]

@@ -51,7 +51,7 @@ from operatoros_api.idempotency_service import (
 from operatoros_api.ledger import EnvelopeValidationError, EventEnvelopeInput, append_event
 from operatoros_api.models.base import uuid7_str
 from operatoros_api.models.catalog import Product, ProductLocation
-from operatoros_api.models.customers import CustomerBalance
+from operatoros_api.models.customers import Customer, CustomerBalance
 from operatoros_api.models.day_till import DaySession, TillSession
 from operatoros_api.models.sales import (
     Quote,
@@ -374,9 +374,21 @@ async def create_sale(
 
     credit_amount = sum(p.amount_minor for p in body.payments if p.method == "credit")
     credit_override_used = False
+    due_date_at: datetime | None = None
     if credit_amount > 0:
         if not body.customer_id:
             raise HTTPException(status_code=422, detail="A credit sale needs a customer.")
+        customer = await ctx.session.get(Customer, body.customer_id)
+        if customer is None:
+            raise HTTPException(status_code=422, detail="Unknown customer.")
+        # Plan §0.2 (Phase 2): a credit-bearing sale IS the invoice --
+        # due_date_at is set once, here, from the customer's terms_days AS
+        # THEY STAND RIGHT NOW, snapshotted onto the sale rather than
+        # joined live to `customers.terms_days` at read time. A later
+        # change to this customer's terms must never retroactively move an
+        # already-issued invoice's due date -- see
+        # models/sales.py::Sale.due_date_at and docs/DECISIONS.md.
+        due_date_at = datetime.now(UTC) + timedelta(days=customer.terms_days)
         balance_result = await ctx.session.execute(
             select(CustomerBalance).where(CustomerBalance.customer_id == body.customer_id)
         )
@@ -424,6 +436,7 @@ async def create_sale(
         credit_override_by_user_id=body.manager_override_user_id if credit_override_used else None,
         credit_override_reason=body.override_reason if credit_override_used else None,
         source_event_id="",
+        due_date_at=due_date_at,
     )
     ctx.session.add(sale)
     await ctx.session.flush()

@@ -11,6 +11,21 @@ Plan §2 extends this projection with two more event types:
   "momo", "airtel", "bank", "card", "cheque"). A `credit` line moves no
   money here at all — it is entirely `customer_balance`'s concern
   (projections/customer_balance.py).
+- `PAYMENT_RECEIVED` — a debt payment (or any other incoming payment)
+  lands in the account named directly by `payload.money_location`
+  (`PaymentReceivedPayload` carries both `method`, the human-facing payment
+  method, and `money_location`, the account key -- same split
+  `EXPENSE_RECORDED` already uses, so `api/routers/debt.py`'s take-payment
+  endpoint sets `money_location` to the resolved account key up front
+  rather than this handler re-deriving it from `method` the way
+  `SALE_RECORDED` has to). This is the money-location half of the same
+  event `customer_balance.py::on_payment_received_balance` lowers the
+  customer's debt for — both run in the same `apply_projections` call,
+  same transaction, same atomicity guarantee `SALE_RECORDED` already
+  proves across these two projections. Deliberately NOT registered for
+  `DEBT_WRITTEN_OFF`: a write-off is a loss recorded purely as debt going
+  away, never money moving into any account (see
+  projections/customer_balance.py::on_debt_written_off).
 - `DAY_OPENED`/`DAY_CLOSED` — the counted-cash figure from a physical till
   count is a correction-to-truth, not a delta: it directly SETS the "till"
   account's balance to `counted_amount_minor`, rather than adjusting it by
@@ -102,6 +117,16 @@ async def on_expense_recorded(session: AsyncSession, event: Event) -> None:
 _PAYMENT_METHOD_ACCOUNT_KEY = {"cash": "till"}
 
 
+def payment_method_account_key(method: str) -> str:
+    """Public seam for callers outside this module (e.g.
+    `api/routers/debt.py`'s take-payment endpoint, which must resolve a
+    `PAYMENT_RECEIVED` payload's `money_location` from the caller-chosen
+    `method` up front) that need the exact same method->account_key
+    mapping `on_sale_recorded_money` uses, without reaching into a
+    module-private name."""
+    return _PAYMENT_METHOD_ACCOUNT_KEY.get(method, method)
+
+
 @register_projection("SALE_RECORDED")
 async def on_sale_recorded_money(session: AsyncSession, event: Event) -> None:
     if event.location_id is None:
@@ -117,6 +142,19 @@ async def on_sale_recorded_money(session: AsyncSession, event: Event) -> None:
         row.balance_minor += int(pay["amount_minor"])
         row.last_event_id = event.id
         row.updated_at_ledger = event.occurred_at
+
+
+@register_projection("PAYMENT_RECEIVED")
+async def on_payment_received_money(session: AsyncSession, event: Event) -> None:
+    if event.location_id is None:
+        raise ValueError("PAYMENT_RECEIVED requires location_id on the envelope.")
+    payload = event.payload
+    row = await _get_or_create_locked(
+        session, event.business_id, event.location_id, payload["money_location"]
+    )
+    row.balance_minor += int(payload["amount_minor"])
+    row.last_event_id = event.id
+    row.updated_at_ledger = event.occurred_at
 
 
 @register_projection("DAY_OPENED")
@@ -172,6 +210,13 @@ def recompute_from_events(events: list[Event]) -> dict[tuple[str, str, str], int
                     continue
                 account_key = _PAYMENT_METHOD_ACCOUNT_KEY.get(pay["method"], pay["method"])
                 _bump(event.business_id, event.location_id, account_key, int(pay["amount_minor"]))
+        elif event.type == "PAYMENT_RECEIVED":
+            _bump(
+                event.business_id,
+                event.location_id,
+                event.payload["money_location"],
+                int(event.payload["amount_minor"]),
+            )
         elif event.type in ("DAY_OPENED", "DAY_CLOSED"):
             key = (event.business_id, event.location_id, "till")
             balances[key] = int(event.payload["counted_amount_minor"])
