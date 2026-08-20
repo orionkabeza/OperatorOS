@@ -4,6 +4,13 @@ export interface ToastItem {
   id: string;
   message: string;
   onUndo?: () => void;
+  /**
+   * Overrides the Provider's 4s default (B.6's general rule) for a specific
+   * toast — D.4 calls out a 20s window specifically for the post-sale
+   * "Undo" toast, longer than the generic default since reversing a
+   * completed sale is a bigger decision than dismissing an info toast.
+   */
+  durationMs?: number;
 }
 
 interface ToastState {

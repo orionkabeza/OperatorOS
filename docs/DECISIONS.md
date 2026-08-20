@@ -203,3 +203,198 @@ no-float-money gate: OK
 - *Store TOTP secrets in plaintext, relying on the database's own encryption-at-rest.* Rejected outright — G.1's baseline (encryption at rest, PII minimised) is a floor, not a target, and application-layer encryption of a second-factor seed is cheap insurance against a database-level compromise specifically.
 
 **How to apply:** When mobile-money or EBM credentials are added (Phase 2/5), that's the forcing function to build real per-tenant envelope encryption — `encrypt_secret`/`decrypt_secret`'s call sites don't need to change, only their implementation and `Settings.secret_encryption_key`'s replacement with a per-tenant key lookup.
+
+---
+
+## 2026-08-20 — Phase 1: projection tables split from their entity tables wherever a table needs both direct and event-driven writes
+
+**Decision:** `customer_balance` is its own table (`customer_balances`, models/customers.py), not columns on `customers`. `product_stock` (`product_locations`, models/catalog.py) and the D.5.3 stock ledger (`stock_movements`, models/stock.py) get the full `reject_direct_projection_write()` trigger because — unlike customers — literally every write to them originates from a stock-affecting event; there is no direct-CRUD path into either table at all.
+
+**Why:** `customers` needs ordinary direct-write CRUD (name/phone/terms/status edits) because there is no `CUSTOMER_UPDATED` event in the fixed Phase 0 registry for a simple profile edit — only `CUSTOMER_CREATED` and `CREDIT_LIMIT_CHANGED` exist, and adding a new event type was out of scope this phase. Putting `balance_minor`/`credit_limit_minor` on the same table as those direct writes would force a choice between (a) the trigger blocking ordinary profile edits, or (b) leaving money-shaped state on that table unprotected — neither is acceptable given Phase 0's established invariant ("only the projection framework writes projection tables," docs/DECISIONS.md 2026-08-20 "Projection write protection"). Splitting the table is what keeps that invariant true with zero carve-outs.
+
+**How to apply:** Any future table that needs both directly-writable fields and event-derived money/quantity fields should be split the same way, not merged with a trigger exception.
+
+---
+
+## 2026-08-20 — Phase 1: two payload/plan mismatches resolved without touching the fixed event registry
+
+**Decision:** Two places where plan §2's projection description didn't quite fit the actual (fixed, Phase 0) `events_registry.py` payload shape, resolved by changing *how the events are used*, not the payload schemas:
+
+1. `STOCKTAKE_POSTED`'s payload (`stocktake_id, location_id, variance_value_minor, line_count`) has no per-product quantities, so it cannot itself drive `product_stock`. Posting a stock-take instead appends one `STOCK_ADJUSTED` event per line with a non-zero variance (which *does* drive `product_stock` through the handler every other adjustment uses) plus one `STOCKTAKE_POSTED` summary event for the audit trail. No `product_stock` handler is registered for `STOCKTAKE_POSTED` itself — see projections/product_stock.py's module docstring.
+2. `RETURN_RECORDED`'s payload has no per-line restock flag and no `customer_id` field. `api/routers/sales.py`'s return endpoint puts only the caller-marked-restock lines into the event's `lines` array (damaged lines instead get their own `STOCK_WRITTEN_OFF` event each, matching spec D.4's stated behaviour exactly); `projections/customer_balance.py`'s handler resolves the customer via the original `Sale` row's `customer_id` rather than the event payload.
+
+**Why:** The task brief was explicit that adding new event types or payload fields is out of scope this phase — Phase 0's registry is the fixed contract. Both mismatches are resolved by treating the *action* (posting a stock-take; recording a return) as something that legitimately emits more than one event, which the ledger already supports (spec E.1 has no "one event per action" rule) — not by inventing new payload shapes.
+
+**How to apply:** If a future phase needs `STOCKTAKE_POSTED` or `RETURN_RECORDED` to carry more structured data directly, that's the point to revisit the registry — flagged here as the honest reason this wasn't done now, not silently worked around.
+
+---
+
+## 2026-08-20 — Phase 1: "cash" payments post to the `till` money-location account, not a separate `cash` account
+
+**Decision:** `projections/money_location_balance.py`'s `SALE_RECORDED` handler maps payment method `"cash"` to `account_key = "till"`; every other method (`momo`, `airtel`, `bank`, `card`, `cheque`) keeps its own name as its own account.
+
+**Why:** Spec D.7.1's balances band names the physical cash account "TILL" (`TILL — RWF 340,500`), the same account `DAY_OPENED`/`DAY_CLOSED` reconciles against a physical count. A first pass of this handler used the payment method string directly as the account key, which would have created a same-money-different-name split between "cash sales" and "till count" — caught before shipping by writing the day-close test and finding the numbers didn't line up.
+
+**How to apply:** Any new payment method that should be its own D.7.1-style balances-band card gets its own account_key; anything that's physically "the cash in the drawer" maps to `"till"`.
+
+---
+
+## 2026-08-20 — Phase 1: DAY_OPENED/DAY_CLOSED SET the till balance rather than adjusting it by a delta
+
+**Decision:** `money_location_balance`'s handlers for `DAY_OPENED`/`DAY_CLOSED` assign `balance_minor = counted_amount_minor` directly (an overwrite), unlike every other handler in the file, which only ever adds/subtracts a delta.
+
+**Why:** The whole point of the open/close ritual (spec D.3/D.11) is that a human physically counted real cash and that figure is authoritative over whatever the ledger's running total believes — the same reasoning a bank reconciliation corrects *to* the statement rather than adjusting the statement by a computed delta. Treating it as a correction-to-truth rather than a delta also means any untracked cash movement (a float taken overnight, a miscount) never compounds past one business day — it gets zeroed out at the next physical count.
+
+**How to apply:** Any future "a human counted the real number" event (e.g. a till-session close, if it's ever wired into `money_location_balance` too) should follow the same SET-not-delta pattern, not the ADD pattern most of this file uses.
+
+---
+
+## 2026-08-20 — Phase 1: `daily_totals`/`staff_daily_totals`/`product_daily_movement` key on the open DaySession's business_date, not UTC calendar date
+
+**Decision:** `projections/daily_totals.py` resolves the date to key these three projections on by looking up the currently-OPEN `DaySession` for the event's `(business_id, location_id)`, not `event.occurred_at`'s UTC calendar date. If no open day session exists, the handler raises rather than guessing — this is a real invariant violation (the day must be open for a sale to be recorded at all) and should fail loudly, not silently misfile a total.
+
+**Why:** A shop's trading day is whatever `DAY_OPENED`/`DAY_CLOSED` says it is (spec D.3/D.11's own ritual) — not midnight UTC, which has no relationship to a Kigali shop's actual hours. This also means a day reopened for a late transaction (spec D.11: "Late transactions ... require the day to be reopened") is handled automatically: the reopened session's `status` flips back to `open`, so the same lookup finds it with no extra plumbing.
+
+**How to apply:** Any future projection keyed on "which business day did this happen on" should use the same open-DaySession lookup, not `occurred_at`'s calendar date.
+
+---
+
+## 2026-08-20 — Phase 1: fixed 18%/0% VAT rate, sale-level discount applied post-line-tax, exact-payment-match, no hard till-session requirement
+
+**Decision, four related simplifications in `api/routers/sales.py`, all disclosed rather than silently invented:**
+
+1. **VAT** is a hard-coded `{"standard": 18%, "exempt": 0%}` keyed on `Product.tax_class` — there is no business-configurable tax-rate settings screen yet (spec D.10.6 Settings is out of Phase 1 scope).
+2. **Sale-level `discount_minor`** (as opposed to per-line discounts) is subtracted from the subtotal after each line's own tax has already been computed on that line's pre-sale-discount net price — not redistributed proportionally across lines before tax. A fully accurate discount-before-tax allocation is deferred.
+3. **`payments` must sum to exactly `total_minor`** — no over/under payment accepted by the API. "Change due" (spec D.4: cash given minus what's owed) is a client-side UI computation from a "cash given" figure the API never sees or stores this phase.
+4. **A till session is looked up but not required** for `create_sale` to succeed (`Sale.till_session_id` is nullable) — only the day needs to be open. Spec D.7.5 describes till sessions as the norm, but making one a hard precondition for the MVP "sell a product" path was judged an unnecessary extra dependency; till reconciliation (`api/routers/till.py`) still works correctly whenever a till session IS open, and the tests exercise both with-and-without-till-session paths.
+
+**Why:** All four are genuine Phase 1 MVP scope trims rather than ambiguity resolved by guessing — each is exactly the kind of thing that would be wrong to invent silently for a system handling real money, so each is documented at the point of decision (the same paragraph in `sales.py`'s module docstring) as well as here.
+
+**How to apply:** VAT rates become business-configurable when Settings (D.10.6) lands; the discount/tax ordering should be revisited if margin-erosion reporting (D.10.3) needs to show discount and tax impact separately per line; over/under-payment support (rounding differences, tips, till float top-ups via a sale) would need an explicit product decision on where the difference goes, not just a schema relaxation.
+
+---
+
+## 2026-08-20 — Phase 1: stock-take "freeze during count" is a live query, not a stored flag — a real bug caught by tests
+
+**Decision:** `ProductLocation.frozen` (added to the schema anticipating spec D.5.4's "freeze the counted items" option) is never written or read. Whether a product is frozen is instead answered by `api/routers/stock_stocktake.py::is_frozen_for_stocktake`, a live query for an open, freezing `Stocktake` covering that product/location, called from `sales.py`'s stock check.
+
+**Why:** `product_locations` is protected by `reject_direct_projection_write()` — only `projections/product_stock.py` may write it. The first implementation wrote `loc_row.frozen = True` directly from the stock-take router, which is exactly the class of bug that trigger exists to catch: it raised `InsufficientPrivilegeError` and surfaced as a 500 the moment a test exercised the freeze path (`tests/test_stocktake_and_transfers.py::test_frozen_stocktake_blocks_a_sale_until_posted`, which failed before this fix and passes after). Deriving the frozen state from `Stocktake.status`/`freeze_during_count` instead needs no write to a projection table at all, and "unfreeze" falls out for free the moment the stock-take is posted (the query simply stops matching).
+
+**How to apply:** The dead `frozen` column was left in place (documented in models/catalog.py) rather than spending a further migration to drop it — safe since it's never read or written, but a future cleanup pass could remove it. Any future "temporary state that blocks an action" idea involving a projection table should default to a live query against the table that actually owns that state, the same way, rather than adding a flag to the projection table.
+
+---
+
+## 2026-08-20 — Phase 1: XLSX import via openpyxl, no server-side import staging
+
+**Decision:** CSV/XLSX product import (`product_import.py`, spec D.2 Step 3) uses `openpyxl` for XLSX parsing (added to `apps/api`'s runtime dependencies) and does NOT persist an in-progress import server-side between `/preview` and `/commit` — the client re-sends the (corrected) row set it got back from `/preview`.
+
+**Why:** `openpyxl` is pure Python, never touches macro/VBA content (`load_workbook()` only ever reads the worksheet cell grid), and is the de facto standard for this exact job — `pandas` would also work but pulls in numpy and a much larger dependency surface for a straightforward row-by-row read. No staging table avoids a second expiring-token/cleanup-job story for what is, in practice, an onboarding-sized list (spec D.2's own UI shows "a preview of the first 20 rows") — the cost is the client needing to hold and re-send the full row set, judged acceptable for that size.
+
+**Alternatives rejected:**
+- *`pandas` + `openpyxl`/`xlrd` under the hood.* Rejected — meaningfully heavier dependency for no functional gain here.
+- *A server-side staging table with an import token and TTL.* Rejected for now as more machinery than a first-cut import screen needs; revisit if a business's product list import turns out to be large enough that re-sending the full row set becomes a real problem.
+
+**How to apply:** If a future need (e.g. imports in the thousands of rows, or a resumable import across sessions) makes the no-staging trade-off too costly, add a staging table keyed by an import id with a TTL, matching the idempotency-key table's own pattern (Postgres, not Redis, same reasoning as docs/DECISIONS.md's idempotency-store entry).
+
+---
+
+## 2026-08-20 — Phase 1: two Phase 0 packaging/test-infra gaps fixed in passing
+
+**Decision:** Two issues unrelated to Phase 1 features, discovered while building and running Phase 1's own test suite, fixed rather than worked around:
+
+1. `pgserver` (imported by `tests/conftest.py`, required to run the test suite at all) was missing from `pyproject.toml`'s `dev` dependency list — `pip install -e ".[dev]"`, the RUNBOOK's own documented setup command, could not actually run the suite without it. Added, along with `openpyxl` (needed for this phase's XLSX import).
+2. `tests/conftest.py`'s embedded-Postgres fixture created a temp data directory (`tempfile.mkdtemp(prefix="operatoros_pg_")`) per test session and called `server.cleanup()` on teardown, but never deleted the directory itself — each real Postgres data directory left behind was tens of megabytes. Running this phase's test suite dozens of times over the course of the work left 56 such directories on disk and filled the machine's C: drive to 0 bytes free mid-task, which is what surfaced it. Fixed with an explicit `shutil.rmtree(tmp_dir, ignore_errors=True)` after `server.cleanup()`.
+
+**Why:** Both are exactly the kind of small, unrelated-but-directly-blocking issues worth fixing in passing rather than leaving for someone else to hit blind — the first blocks anyone following the RUNBOOK from scratch, the second silently fills a contributor's or CI runner's disk over time.
+
+**How to apply:** If `pgserver` or a future embedded-service test dependency changes its own cleanup behaviour, re-verify a full test run doesn't leave temp artifacts behind (`ls $TEMP | grep operatoros_pg` should be empty after `pytest` exits).
+
+---
+
+## 2026-08-20 — Phase 1: three new capability keys added to the existing catalogue (not new event types)
+
+**Decision:** `customer.manage`, `return.create`, and `stocktake.post` were added to `capabilities.py`'s `CAPABILITIES`/`DEFAULT_ROLE_CAPABILITIES`, granted to Owner/Manager by default, plus Cashier for `return.create` and Storekeeper for `stocktake.post` (spec F.1's per-role table).
+
+**Why:** `capabilities.py`'s own Phase 0 docstring already documents this as expected, cheap per-phase growth ("the exact bundle membership will be revisited as each phase's features land... a data change, not a mechanism change") — distinct from the events_registry.py event-type freeze the task brief called out explicitly. Customer profile edits/credit-limit changes, recording a return within the normal window, and posting a stock-take all needed a capability distinct from the closest Phase 0 analogues (`user.manage`, `sale.void`, `stock.adjust` respectively) to match spec F.1's actual role boundaries (e.g. a Cashier can process an ordinary return but not write off debt or override a credit limit).
+
+**How to apply:** Same pattern for any future phase's new capability needs — add the key, describe it, assign it in `DEFAULT_ROLE_CAPABILITIES` per spec F.1's table, no schema/mechanism change required.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: a hand-rolled mock adapter, not MSW
+
+**Decision:** `apps/web/lib/mock/` (store.ts + seed.ts) is a plain in-memory module, not Mock Service Worker. Every `lib/api/*.ts` function branches on a single `USE_MOCK_API` constant (`lib/api/config.ts`) and calls either the mock store directly or a real `fetch` — never an intercepted network request.
+
+**Why:** The task brief offered either MSW or "a simple fetch-intercepting dev-only adapter." MSW's browser mode needs a generated `mockServiceWorker.js` registered as a real Service Worker, which (a) is one more moving part to keep in sync with the strict, nonce-based CSP (service worker registration and its own fetch interception have their own CSP/scope implications not otherwise exercised by this app) and (b) would need `msw/node` wired up separately for Vitest and yet another config surface for Playwright, three integration points for one seam. The direct-branch adapter needs zero registration, works identically whether the code runs under Vitest (jsdom), Playwright (real Chromium), or `next dev`, and the swap point for the real backend is one file (`config.ts`'s `USE_MOCK_API`) — flip it and every already-written `apiRequest(...)` call path (present in every `lib/api/*.ts` function today, just unexercised) becomes live with no component changes. Same spirit as `lib/demo-auth-store.ts`'s Phase 0 precedent: temporary, clearly marked, swappable without touching callers.
+
+**Alternatives rejected:**
+- *MSW in browser + node mode.* Rejected — real value (byte-accurate network-layer interception, DevTools-visible requests) that this project doesn't need yet, since there's no real backend to contract-test against this phase; the cost (service worker + CSP interaction, two runtime configs) wasn't worth paying for that value now.
+
+**How to apply:** When `apps/api` is live and reachable, set `NEXT_PUBLIC_API_BASE_URL` and `USE_MOCK_API` flips to `false` automatically (`!process.env.NEXT_PUBLIC_API_BASE_URL`) — no code changes elsewhere. If a future phase genuinely needs network-layer testing (e.g. verifying retry/timeout behaviour, or the `Idempotency-Key` header actually reaching the wire), that's the point to add MSW specifically for that test file, not replace this adapter wholesale.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: real CSP violation from Radix's scroll-lock — fixed with a nonce, not a CSP weakening
+
+**Decision:** `app/providers.tsx` now calls `setNonce()` from the `get-nonce` package (added as a direct dependency) with the same per-request nonce `middleware.ts` already generates for `script-src`, read off the existing `<meta name="x-nonce">` tag. `middleware.ts`'s CSP gained `style-src-elem 'self' 'nonce-${nonce}'` (previously `'self'` only).
+
+**Why:** Adding `@radix-ui/react-dropdown-menu` and `@radix-ui/react-tabs` for the Counter/Stock Room screens surfaced a real, previously-latent bug: every Radix Dialog-family primitive (`Dialog`, `Menu`/`DropdownMenu`) depends on `react-remove-scroll` for body scroll-locking, which injects a genuine `<style>` element via `react-style-singleton` to hide the scrollbar and compensate its width — this has been true since Phase 0's `ConfirmDialog`/`Drawer` started using `@radix-ui/react-dialog`, but no Phase 0 test asserted zero console/CSP errors *after actually opening a Dialog* (the shutter/design smoke tests check the page shell, not an opened modal's after-effects). Confirmed via a `securitypolicyviolation` listener (same method as the Phase 0 CSP fix in this file) that the violated directive was `style-src-elem`, not `style-src-attr` — this is a real `<style>` tag, not an inline `style=""` attribute, so the existing `style-src-attr 'unsafe-inline'` carve-out doesn't and shouldn't cover it. `react-style-singleton` already supports exactly this scenario via `get-nonce`'s `setNonce()`; wiring the app's own per-request secret nonce through it keeps "no `unsafe-inline` anywhere" strictly true — an attacker still cannot inject an arbitrary `<style>` element without knowing that request's nonce, which is the same guarantee `script-src`'s nonce already provides.
+
+**Alternatives rejected:**
+- *Add `style-src-elem 'unsafe-inline'`.* Rejected — this is exactly the blanket weakening spec G.1 forbids and the whole nonce architecture exists to avoid; a nonce achieves the same functional outcome without it.
+- *Disable Radix's scroll lock (`Dialog.Root`'s internals don't expose this directly without dropping to lower-level primitives) or replace Dialog-family components.* Rejected — scroll-locking behind a modal is correct, expected behaviour (spec-adjacent UX baseline), and Radix is an explicit stack requirement; the nonce fix is a two-line, non-invasive change instead.
+
+**How to apply:** Any future Radix (or other) primitive that injects DOM nodes should be checked the same way before being trusted under this CSP — open it in a real browser (or Playwright) with a `securitypolicyviolation` listener attached, not just eyeballed. If a library's injected element doesn't support nonces, that's a real blocker requiring either a different library or an explicit, documented, scoped CSP exception — never a blanket `unsafe-inline`.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: Counter's three-column layout only mounts one Basket at a time, keyed off the spec's own ≥1280px threshold
+
+**Decision:** `lib/use-media-query.ts`'s `useIsDesktopBasket()` checks `(min-width: 1280px)` — spec D.4's literal "three columns on desktop (≥1280px)" — and `components/counter/Counter.tsx` conditionally mounts either the inline desktop `<Basket>` column or the mobile bottom-sheet `<Basket>` (bottom bar + Drawer), never both at once.
+
+**Why:** The first implementation mounted both simultaneously, showing/hiding each with Tailwind's `hidden md:block` (768px) — CSS-only visibility, not conditional mounting — which created two real problems, both caught by driving the app with real Playwright automation rather than trusting the code by inspection: (1) two DOM nodes shared the same `aria-label="Basket"` landmark simultaneously (one merely `display:none`, not absent — a genuine duplicate-landmark defect, not just a test-locator inconvenience), and (2) at exactly 768px width the fixed 420px basket column plus the category rail left the product grid roughly 50px of usable width, which `<main>`'s `overflow-x-hidden` then clipped to invisible — the product tiles were technically in the DOM but had zero effective rendered size. Both problems trace to the same root cause: reserving desktop-column space starting at the wrong breakpoint (768px, tablet) instead of the spec's own stated one (1280px, desktop). Real conditional mounting via `useMediaQuery` (not CSS `hidden`) fixes both at once and is architecturally more honest — there was never a reason to run two live, data-fetching copies of the same stateful basket simultaneously.
+
+**How to apply:** Any future screen with a similar "column on desktop, sheet on mobile" pattern should use real conditional mounting (a media-query hook) rather than CSS-only `hidden`/`block` toggling, specifically because duplicate ARIA landmarks and viewport-squeeze layout bugs are easy to miss by code review alone and only reliably surface under real browser automation at the actual breakpoint boundary.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: `Money`'s `emphasis` prop, `forwards` on three animations, and a `text-white/70` contrast fix
+
+**Decision:** Three small, real fixes to Phase 0 design-system code, all found via genuine browser/axe verification while building Phase 1 screens, not by inspection:
+1. `components/design/Money.tsx` gained an optional `emphasis?: "in" | "out" | "watch"` prop that forces the figure's colour independent of sign — needed for D.4's "shows the customer's outstanding balance inline... in `--out`," which is a *positive* receivable amount that still needs to read as a warning, not a negative one (which would incorrectly add a leading minus per B.3's rule).
+2. `components/design/Qty.tsx`'s dark-surface unit suffix (e.g. "items" in the Tally Rail's "Low stock" figure) changed from `text-white/60` to `text-white/70` — axe measured 4.18:1 against `--steel`, under WCAG AA's 4.5:1 floor for normal text; `white/70` computes to ~6.9:1.
+3. `tailwind.config.ts`'s `count-up`/`drawer-slide-in`/`row-fade-in` animations gained `forwards` (matching `shutter-raise`/`-lower`/`-fade`, which already had it) — explicit fill-mode rather than relying on the "to" keyframe coincidentally matching each element's un-animated resting style.
+
+**Why:** Same standard as everything else in this file — a real axe scan on the Stock Room screen (where the Tally Rail's "Low stock" figure is live) is what caught #2, not a design review; #1 and #3 were found while building/testing the Counter and Close-the-Shop flows respectively.
+
+**How to apply:** Any future screen needing to force a `Money` figure's colour independent of its sign should use `emphasis`, never fake it with a wrapping `className` (the figure's own inner span sets its colour directly, so an outer wrapper class doesn't reach it — confirmed the hard way).
+
+---
+
+## 2026-08-20 — Phase 1 frontend: known, accepted risk — `exceljs`'s pinned `uuid@8.3.2` (moderate, GHSA-w5hq-g745-h8pq)
+
+**Not a decision — a flagged, tracked risk**, same pattern as this file's existing Next.js 14.2.35 CSP-nonce entry. `exceljs@4.4.0` (added for the D.2 Step 3 XLSX importer) pins `uuid@^8.3.0`, which resolves to `8.3.2` — flagged by `npm audit` as moderate severity (missing buffer bounds check in `uuid`'s v3/v5/v6 functions "when `buf` is provided"). No newer `exceljs` release exists that depends on a patched `uuid`.
+
+**Why not fixed immediately:** An `npm overrides` pin to `uuid@^11.1.1` was tried and did not take — `npm install`, `npm install --force`, and removing the resolved `uuid` directory and reinstalling all left `exceljs` resolving `uuid@8.3.2` regardless (worth a fresh look with more time; not chased further here). A full `package-lock.json` regeneration was the next lever available, but this workspace's lockfile is shared with the backend agent's concurrent work in the same worktree, disk space in this sandbox was observed at 0 bytes free at least once during this session (see this file's Phase 1 backend `pgserver`-cleanup entry), and the vulnerable code path (`buf`-provided v3/v5/v6 UUID generation) is very unlikely to be reachable from this app's actual usage — `apps/web` only ever calls `workbook.xlsx.load(buffer)` to *read* a tenant-uploaded product list, never constructs or writes a workbook, and `exceljs`'s own use of `uuid` is plausibly confined to write-path features (defined names, styles) this app never exercises. Given that risk profile, forcing a same-session lockfile fight over a shared, disk-constrained worktree was judged the wrong trade against a moderate, likely-unreachable finding.
+
+**How to apply:** Before shipping this importer anywhere real, re-attempt the `uuid` override (or an `exceljs` upgrade, if one ships) on a clean checkout with normal disk headroom, and confirm which `exceljs` code path actually invokes `uuid` — if it *is* reachable from `.load()`, this becomes a must-fix, not an accepted risk. `npm audit --omit=dev` is the one-line check.
+
+---
+
+## 2026-08-20 — Phase 1: closed a last-unit overselling race in the sale endpoint
+
+**Decision:** `api/routers/sales.py::_check_stock`'s read of `ProductLocation` now takes `.with_for_update()`, and processes a sale's lines in a stable `product_id` order.
+
+**Why:** found during independent re-verification before merging Phase 1, not by either building agent. The `product_stock` projection's actual decrement (`projections/product_stock.py::_get_or_create_locked`) already locked its row with `FOR UPDATE` — but `_check_stock`'s earlier read, in the same request transaction, did not. Two genuinely concurrent sales for the last unit of a product (two different Idempotency-Keys — e.g. two cashiers scanning the same last item at the same instant, not a retried request) could both read "1 available" before either commits, both pass the check, and the second to reach the projection would apply its decrement on top of the first's already-zeroed row, driving `on_hand` negative silently with no override recorded. Proved by temporarily reverting the lock and re-running the new regression test (`test_concurrent_sales_for_the_last_unit_do_not_oversell`): without the fix it produced two `201`s instead of one `201` and one `422`. The existing double-submit tests didn't catch this because they replay the *same* Idempotency-Key, which is a different failure mode (retried request, not independent concurrent requests).
+
+**How to apply:** any future code path that reads a `product_locations` row to decide whether an operation is allowed, where the same request will later write to that row, must take the lock at the read (not just at the eventual write) if the check-then-write sequence needs to be race-free — the write-side lock alone only protects the write, not the decision made before it.
+
+---
+
+## 2026-08-20 — Phase 1: bundle-budget fix — split rooms and the CSV/XLSX importer out of the initial page load
+
+**Decision:** `app/page.tsx`'s `Onboarding`/`ShopFloor` imports and `ShopFloor.tsx`'s `Counter`/`StockRoom`/`Overview`/`CloseShopFlow` imports are now `next/dynamic({ ssr: false })` instead of static imports; `StepStock.tsx`'s `CsvImporter` (which pulls in `exceljs`, see this file's entry above) is likewise dynamic.
+
+**Why:** found during independent re-verification before merging Phase 1. `next build`'s own output showed the `/` route's First Load JS at 437KB, well over spec G's "< 250KB gzipped for the initial route" — because the whole app (every room, plus `exceljs` for a CSV-upload path most sessions never touch) was one client component tree statically imported from a single `"/"` route with no code-splitting. After the fix, the same build reports 124KB First Load JS for `/` (pre-gzip; the real transferred size is smaller still) — full 42/42 e2e + 55/55 Vitest suites re-run clean afterward to confirm the lazy-loaded rooms still work (loading states, hydration, no regressions).
+
+**How to apply:** any new room or heavy, conditionally-used library (chart libraries, other file-format parsers) added to the Shop Floor shell should be wired in via `next/dynamic`, not a static import at the top of `ShopFloor.tsx`/`page.tsx` — the shell's single-route, all-client-side architecture means a static import there ships in the initial bundle regardless of whether the component ever renders.

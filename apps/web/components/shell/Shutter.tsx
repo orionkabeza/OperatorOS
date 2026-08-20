@@ -35,6 +35,16 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
   const locked = shutterState === "locked-out";
   const twoFactor = shutterState === "two-factor";
 
+  // `aria-hidden` on its own only hides this from the accessibility tree —
+  // it does NOT remove the phone/PIN/checkbox/buttons inside from the tab
+  // order, so a sighted keyboard user (or axe's aria-hidden-focus rule)
+  // could still reach "invisible" controls once signed in. React 18.3 (this
+  // stack's pinned version) doesn't reliably serialize a plain `inert` JSX
+  // prop to the DOM — verified empirically, not assumed: it never appeared
+  // in the rendered HTML axe inspected. The robust fix that doesn't depend
+  // on that is simpler anyway: once signed in, the card's interactive
+  // content genuinely doesn't need to stay mounted (it's animating off
+  // screen, never coming back for this session), so it's just not rendered.
   return (
     <div
       className={clsx(
@@ -48,6 +58,8 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
       </p>
 
       <div className="relative w-shutter max-w-full mx-16 rounded border-t-4 border-tape bg-paper p-32 shadow-shelf">
+        {signedIn ? null : (
+          <>
         {submitting ? (
           <div className="absolute inset-x-0 top-0 h-3 overflow-hidden rounded-t bg-rule">
             <div className="motion-safe:animate-count-up h-full w-full bg-tape" />
@@ -169,6 +181,8 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
               I forgot my PIN
             </button>
           </form>
+        )}
+          </>
         )}
       </div>
 

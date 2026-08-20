@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { signInAndReachCounter } from "./helpers";
 
 const DEMO_PHONE = "788 402 219";
 const DEMO_PIN = "142857";
@@ -13,25 +14,18 @@ async function typeIntoPinBoxes(page: import("@playwright/test").Page, digits: s
   }
 }
 
-test("full sign-in flow: shutter -> two-factor -> Shop Floor -> room switch", async ({ page }) => {
+test("full sign-in flow: shutter -> two-factor -> Onboarding -> Shop Floor -> room switch", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (msg) => {
     if (msg.type() === "error") errors.push(msg.text());
   });
 
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Open up" })).toBeVisible();
-
-  await page.fill("#shutter-phone", DEMO_PHONE);
-  await typeIntoPinBoxes(page, DEMO_PIN);
-  await page.getByRole("button", { name: "Raise the shutter" }).click();
-
-  await expect(page.getByText("We sent a code to")).toBeVisible();
-  await typeIntoPinBoxes(page, DEMO_CODE);
-  await page.getByRole("button", { name: "Confirm code" }).click();
-
-  await expect(page.getByRole("heading", { name: "Counter" })).toBeVisible();
+  // D.1: "First-ever sign-in — after auth, goes straight to Onboarding
+  // (D.2) rather than the shop floor." signInAndReachCounter walks that
+  // real path (business step, skip the rest, open the day) rather than
+  // assuming the pre-Phase-1 shortcut straight to the Shop Floor.
+  await signInAndReachCounter(page);
   await expect(page.getByText("TAKEN TODAY")).toBeVisible();
 
   await page.getByRole("button", { name: "Debt Book" }).click();

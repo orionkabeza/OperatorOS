@@ -38,6 +38,16 @@ PATH_PARAM_RE = re.compile(r"{(\w+)}")
 RESOURCE_ID_SEEDS: dict[str, Callable[[SeededTenant], str]] = {
     "user_id": lambda t: t.owner.id,
     "location_id": lambda t: t.location.id,
+    # Phase 1 additions -- see tests/conftest.py::make_tenant, which seeds
+    # one of each directly so there's a real tenant-B id to attack with.
+    "product_id": lambda t: t.product.id,
+    "customer_id": lambda t: t.customer.id,
+    "quote_id": lambda t: t.quote.id,
+    "receipt_number": lambda t: str(t.receipt_number),
+    "till_session_id": lambda t: t.till_session.id,
+    "stocktake_id": lambda t: t.stocktake.id,
+    "line_id": lambda t: t.stocktake_line.id,
+    "transfer_id": lambda t: t.transfer.id,
 }
 
 
@@ -119,10 +129,33 @@ async def test_cross_tenant_isolation_every_protected_route(
     failures: list[str] = []
 
     def _leaks_tenant_b(text: str) -> bool:
-        return any(
-            marker in text
-            for marker in (tenant_b.owner.id, tenant_b.business.id, tenant_b.location.id)
+        # Phase 1 additions: a leaked product/customer/quote/till response
+        # wouldn't necessarily echo owner_id/business_id/location_id
+        # anywhere in its body (ProductOut/CustomerOut/... don't carry those
+        # fields) -- but it WOULD echo the resource's own (UUID) id, which
+        # is exactly what got substituted into the attacked path in the
+        # first place. If a broken RLS policy let the row through
+        # unfiltered, its own id in the response body would match tenant
+        # B's real id; a correctly-scoped 404/empty response never gets
+        # that far. Deliberately NOT using the numeric `receipt_number` as
+        # a substring marker here -- it's a small random int (100000-999999)
+        # that could coincidentally appear inside an unrelated money amount
+        # elsewhere in a legitimate response and produce a false positive;
+        # ReceiptOut's `sale_id` (a real UUID) is the safe equivalent.
+        markers = (
+            tenant_b.owner.id,
+            tenant_b.business.id,
+            tenant_b.location.id,
+            tenant_b.product.id,
+            tenant_b.customer.id,
+            tenant_b.quote.id,
+            tenant_b.till_session.id,
+            tenant_b.sale_id,
+            tenant_b.stocktake.id,
+            tenant_b.stocktake_line.id,
+            tenant_b.transfer.id,
         )
+        return any(marker in text for marker in markers)
 
     for route in _protected_routes(app):
         methods = route.methods - {"HEAD", "OPTIONS"}

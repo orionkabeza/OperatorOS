@@ -22,7 +22,23 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from redis import asyncio as redis_asyncio
 
-from operatoros_api.api.routers import auth, events, health, users
+from operatoros_api.api.routers import (
+    auth,
+    customers,
+    day,
+    events,
+    health,
+    overview,
+    products,
+    products_import,
+    receipts,
+    sales,
+    stock,
+    stock_stocktake,
+    stock_transfers,
+    till,
+    users,
+)
 from operatoros_api.config import get_settings
 
 logger = structlog.get_logger("operatoros_api")
@@ -69,6 +85,17 @@ def create_app(redis_client: Any = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(events.router)
+    app.include_router(products.router)
+    app.include_router(products_import.router)
+    app.include_router(customers.router)
+    app.include_router(stock.router)
+    app.include_router(stock_stocktake.router)
+    app.include_router(stock_transfers.router)
+    app.include_router(sales.router)
+    app.include_router(day.router)
+    app.include_router(till.router)
+    app.include_router(receipts.router)
+    app.include_router(overview.router)
 
     return app
 

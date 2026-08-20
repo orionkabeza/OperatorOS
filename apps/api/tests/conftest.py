@@ -14,10 +14,13 @@ nothing.
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -29,6 +32,11 @@ from sqlalchemy import create_engine, text
 
 import operatoros_api.db as db_module
 from operatoros_api.main import create_app
+from operatoros_api.models.catalog import Category, Product, Unit
+from operatoros_api.models.customers import Customer
+from operatoros_api.models.day_till import DaySession, TillSession
+from operatoros_api.models.sales import Quote, QuoteLine, Receipt, Sale
+from operatoros_api.models.stock import Stocktake, StocktakeLine, StockTransfer, StockTransferLine
 from operatoros_api.models.tenancy import Business, Location, Role, User
 from operatoros_api.seed import (
     create_business,
@@ -88,6 +96,15 @@ def postgres_urls() -> dict[str, str]:
     }
     yield urls
     server.cleanup()
+    # `server.cleanup()` (cleanup_mode="stop") stops the postgres process
+    # but does NOT delete `tmp_dir` -- a real Postgres data directory,
+    # observed at 50-100MB+ per test session. Left as-is, every local
+    # `pytest` run (and every one of this session's many invocations)
+    # leaves one behind under the OS temp dir permanently; found the hard
+    # way when 56 accumulated sessions' worth filled the disk to 0 bytes
+    # free mid-task. Explicit removal here is the safety net regardless of
+    # what cleanup_mode is doing internally.
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -123,6 +140,21 @@ class SeededTenant:
     owner: User
     owner_phone: str
     owner_secret: str
+    # Phase 1 additions: one of each new resource type, seeded directly (not
+    # through the API) so tests/test_cross_tenant_isolation.py's
+    # RESOURCE_ID_SEEDS has a real tenant-B id to attack for every new path
+    # parameter registered there (product_id, customer_id, quote_id,
+    # receipt_number, till_session_id).
+    product: Product
+    customer: Customer
+    day_session: DaySession
+    till_session: TillSession
+    quote: Quote
+    receipt_number: int
+    sale_id: str
+    stocktake: Stocktake
+    stocktake_line: StocktakeLine
+    transfer: StockTransfer
 
 
 async def make_tenant(label: str) -> SeededTenant:
@@ -149,6 +181,146 @@ async def make_tenant(label: str) -> SeededTenant:
             location_ids=[location.id],
         )
 
+        category = Category(business_id=business_id, name="General")
+        unit = Unit(business_id=business_id, name="piece", symbol="pc")
+        session.add_all([category, unit])
+        await session.flush()
+        product = Product(
+            business_id=business_id,
+            category_id=category.id,
+            base_unit_id=unit.id,
+            name=f"{label} Product",
+            sku=f"SKU-{uuid.uuid4().hex[:8]}",
+            cost_price_minor=100000,
+            selling_price_minor=150000,
+        )
+        session.add(product)
+
+        customer = Customer(business_id=business_id, name=f"{label} Customer", phone=phone)
+        session.add(customer)
+
+        now = datetime.now(UTC)
+        day_session = DaySession(
+            business_id=business_id,
+            location_id=location.id,
+            business_date=date.today(),
+            status="open",
+            opened_at=now,
+            opened_by_user_id=owner.id,
+            opening_counted_amount_minor=0,
+            opening_expected_amount_minor=0,
+        )
+        session.add(day_session)
+        await session.flush()
+
+        till_session = TillSession(
+            business_id=business_id,
+            location_id=location.id,
+            day_session_id=day_session.id,
+            cashier_user_id=owner.id,
+            status="open",
+            opened_at=now,
+            opening_float_minor=0,
+        )
+        session.add(till_session)
+
+        # receipt_number/quote_number are only unique WITHIN a business (each
+        # business has its own sequence, models/sales.py::ReceiptSequence) --
+        # RLS, not the number itself, is what's supposed to stop tenant A
+        # from reading tenant B's receipt/quote. Using the same number (e.g.
+        # both "1") for every seeded tenant would make the isolation attack
+        # below pass vacuously (RLS would resolve "1" to the ATTACKER's own
+        # row, never reaching tenant B's), so these are randomised instead --
+        # a real, distinct id to attack with, not a coincidentally-shared one.
+        quote_number = uuid.uuid4().int % 900000 + 100000
+        quote = Quote(
+            business_id=business_id,
+            location_id=location.id,
+            customer_id=customer.id,
+            quote_number=quote_number,
+            created_by_user_id=owner.id,
+            subtotal_minor=150000,
+            discount_minor=0,
+            tax_minor=0,
+            total_minor=150000,
+            status="open",
+            expires_at=now + timedelta(days=14),
+            source_event_id="seed",
+        )
+        session.add(quote)
+        await session.flush()
+        session.add(
+            QuoteLine(
+                business_id=business_id,
+                quote_id=quote.id,
+                product_id=product.id,
+                quantity=Decimal("1.0000"),
+                unit_price_minor=150000,
+                line_total_minor=150000,
+            )
+        )
+
+        sale = Sale(
+            business_id=business_id,
+            location_id=location.id,
+            day_session_id=day_session.id,
+            till_session_id=till_session.id,
+            cashier_user_id=owner.id,
+            subtotal_minor=150000,
+            discount_minor=0,
+            tax_minor=0,
+            total_minor=150000,
+            status="completed",
+            source_event_id="seed",
+        )
+        session.add(sale)
+        await session.flush()
+        receipt_number = uuid.uuid4().int % 900000 + 100000
+        receipt = Receipt(business_id=business_id, sale_id=sale.id, receipt_number=receipt_number)
+        session.add(receipt)
+
+        second_location = await create_location(
+            session, business_id=business_id, name="Secondary", is_primary=False
+        )
+
+        stocktake = Stocktake(
+            business_id=business_id,
+            location_id=location.id,
+            scope="all",
+            status="counting",
+            started_by_user_id=owner.id,
+            started_at=now,
+        )
+        session.add(stocktake)
+        await session.flush()
+        stocktake_line = StocktakeLine(
+            business_id=business_id,
+            stocktake_id=stocktake.id,
+            product_id=product.id,
+            expected_quantity=Decimal("0"),
+        )
+        session.add(stocktake_line)
+
+        transfer = StockTransfer(
+            business_id=business_id,
+            from_location_id=location.id,
+            to_location_id=second_location.id,
+            status="in_transit",
+            created_by_user_id=owner.id,
+            sent_at=now,
+        )
+        session.add(transfer)
+        await session.flush()
+        session.add(
+            StockTransferLine(
+                business_id=business_id,
+                transfer_id=transfer.id,
+                product_id=product.id,
+                quantity_sent=Decimal("0"),
+            )
+        )
+        await session.flush()
+
     return SeededTenant(
         business=business,
         location=location,
@@ -156,6 +328,16 @@ async def make_tenant(label: str) -> SeededTenant:
         owner=owner,
         owner_phone=phone,
         owner_secret=secret,
+        product=product,
+        customer=customer,
+        day_session=day_session,
+        till_session=till_session,
+        quote=quote,
+        receipt_number=receipt.receipt_number,
+        sale_id=sale.id,
+        stocktake=stocktake,
+        stocktake_line=stocktake_line,
+        transfer=transfer,
     )
 
 

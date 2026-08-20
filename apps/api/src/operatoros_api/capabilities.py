@@ -50,6 +50,12 @@ CAPABILITIES: dict[str, str] = {
     "till.open": "Open a till session.",
     "till.close": "Close a till session.",
     "return.approve": "Approve a return outside the normal window.",
+    # --- Phase 1 additions. Not new event types (events_registry.py is
+    # fixed this phase) -- new capability keys, which capabilities.py's own
+    # docstring already documents as expected per-phase growth. ---
+    "return.create": "Record a return (within the normal window).",
+    "customer.manage": "Edit a customer's profile or change their credit limit.",
+    "stocktake.post": "Post a stock-take (write the correction movements).",
 }
 
 DEFAULT_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -75,10 +81,15 @@ DEFAULT_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "till.open",
             "till.close",
             "return.approve",
+            "return.create",
+            "customer.manage",
+            "stocktake.post",
         }
     ),
-    "cashier": frozenset({"sale.create", "till.open", "till.close"}),
-    "storekeeper": frozenset({"stock.adjust", "stock.transfer", "product.manage"}),
+    "cashier": frozenset({"sale.create", "till.open", "till.close", "return.create"}),
+    "storekeeper": frozenset(
+        {"stock.adjust", "stock.transfer", "product.manage", "stocktake.post"}
+    ),
     "bookkeeper": frozenset(
         {"report.view", "data.export", "product.view_cost", "debt.credit_override"}
     ),

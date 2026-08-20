@@ -11,6 +11,7 @@ export function ToastViewport() {
       {toasts.map((toast) => (
         <RadixToast.Root
           key={toast.id}
+          {...(toast.durationMs !== undefined ? { duration: toast.durationMs } : {})}
           className="motion-safe:animate-row-fade-in flex items-center gap-16 rounded bg-steel px-16 py-12 text-white shadow-shelf"
           onOpenChange={(open) => {
             if (!open) dismiss(toast.id);

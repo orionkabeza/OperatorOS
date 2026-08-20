@@ -3,6 +3,24 @@
 Driven by two event types: `MONEY_TRANSFERRED` (moves money between two
 named accounts at a location — e.g. till -> bank) and `EXPENSE_RECORDED`
 (money leaves one account). Both require `location_id` on the envelope.
+
+Plan §2 extends this projection with two more event types:
+
+- `SALE_RECORDED` — every non-`credit` payment line moves real money into
+  the account named by its payment method (`account_key = method`: "cash",
+  "momo", "airtel", "bank", "card", "cheque"). A `credit` line moves no
+  money here at all — it is entirely `customer_balance`'s concern
+  (projections/customer_balance.py).
+- `DAY_OPENED`/`DAY_CLOSED` — the counted-cash figure from a physical till
+  count is a correction-to-truth, not a delta: it directly SETS the "till"
+  account's balance to `counted_amount_minor`, rather than adjusting it by
+  some computed amount. This is a deliberate choice (docs/DECISIONS.md):
+  the whole point of the open/close ritual (spec D.3/D.11) is that a human
+  physically counted real cash and that count is authoritative over
+  whatever the ledger's running total says — the same reason a bank
+  reconciliation corrects to the statement, not the other way around. Using
+  it as a correction also means any till drift from an untracked cash
+  movement never compounds past one business day.
 """
 
 from __future__ import annotations
@@ -73,6 +91,56 @@ async def on_expense_recorded(session: AsyncSession, event: Event) -> None:
     row.updated_at_ledger = event.occurred_at
 
 
+# Payment method -> money-location account_key. "cash" maps to "till" (spec
+# D.7.1's balances band names the physical cash account "TILL", the same
+# account DAY_OPENED/DAY_CLOSED reconciles) rather than a literal "cash"
+# account that would never otherwise exist. Every other method keeps its
+# own name as its own account (momo, airtel, bank, card, cheque) -- D.7.1
+# names MTN MoMo/Airtel/Bank explicitly; card/cheque aren't in that
+# example band but are structurally the same kind of account, just not
+# called out by name in the spec's illustration.
+_PAYMENT_METHOD_ACCOUNT_KEY = {"cash": "till"}
+
+
+@register_projection("SALE_RECORDED")
+async def on_sale_recorded_money(session: AsyncSession, event: Event) -> None:
+    if event.location_id is None:
+        raise ValueError("SALE_RECORDED requires location_id on the envelope.")
+    payload = event.payload
+    for pay in payload["payments"]:
+        if pay["method"] == "credit":
+            continue
+        account_key = _PAYMENT_METHOD_ACCOUNT_KEY.get(pay["method"], pay["method"])
+        row = await _get_or_create_locked(
+            session, event.business_id, event.location_id, account_key
+        )
+        row.balance_minor += int(pay["amount_minor"])
+        row.last_event_id = event.id
+        row.updated_at_ledger = event.occurred_at
+
+
+@register_projection("DAY_OPENED")
+async def on_day_opened(session: AsyncSession, event: Event) -> None:
+    if event.location_id is None:
+        raise ValueError("DAY_OPENED requires location_id on the envelope.")
+    payload = event.payload
+    row = await _get_or_create_locked(session, event.business_id, event.location_id, "till")
+    row.balance_minor = int(payload["counted_amount_minor"])
+    row.last_event_id = event.id
+    row.updated_at_ledger = event.occurred_at
+
+
+@register_projection("DAY_CLOSED")
+async def on_day_closed(session: AsyncSession, event: Event) -> None:
+    if event.location_id is None:
+        raise ValueError("DAY_CLOSED requires location_id on the envelope.")
+    payload = event.payload
+    row = await _get_or_create_locked(session, event.business_id, event.location_id, "till")
+    row.balance_minor = int(payload["counted_amount_minor"])
+    row.last_event_id = event.id
+    row.updated_at_ledger = event.occurred_at
+
+
 def recompute_from_events(events: list[Event]) -> dict[tuple[str, str, str], int]:
     """Pure recomputation used by the nightly audit task (tasks/projection_audit.py)
     and by tests: replays MONEY_TRANSFERRED/EXPENSE_RECORDED events in
@@ -98,5 +166,14 @@ def recompute_from_events(events: list[Event]) -> dict[tuple[str, str, str], int
         elif event.type == "EXPENSE_RECORDED":
             amount = int(event.payload["amount_minor"])
             _bump(event.business_id, event.location_id, event.payload["money_location"], -amount)
+        elif event.type == "SALE_RECORDED":
+            for pay in event.payload["payments"]:
+                if pay["method"] == "credit":
+                    continue
+                account_key = _PAYMENT_METHOD_ACCOUNT_KEY.get(pay["method"], pay["method"])
+                _bump(event.business_id, event.location_id, account_key, int(pay["amount_minor"]))
+        elif event.type in ("DAY_OPENED", "DAY_CLOSED"):
+            key = (event.business_id, event.location_id, "till")
+            balances[key] = int(event.payload["counted_amount_minor"])
 
     return balances
