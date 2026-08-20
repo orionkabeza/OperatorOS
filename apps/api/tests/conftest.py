@@ -14,6 +14,7 @@ nothing.
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 import uuid
 from collections.abc import AsyncIterator
@@ -35,6 +36,7 @@ from operatoros_api.models.catalog import Category, Product, Unit
 from operatoros_api.models.customers import Customer
 from operatoros_api.models.day_till import DaySession, TillSession
 from operatoros_api.models.sales import Quote, QuoteLine, Receipt, Sale
+from operatoros_api.models.stock import Stocktake, StocktakeLine, StockTransfer, StockTransferLine
 from operatoros_api.models.tenancy import Business, Location, Role, User
 from operatoros_api.seed import (
     create_business,
@@ -94,6 +96,15 @@ def postgres_urls() -> dict[str, str]:
     }
     yield urls
     server.cleanup()
+    # `server.cleanup()` (cleanup_mode="stop") stops the postgres process
+    # but does NOT delete `tmp_dir` -- a real Postgres data directory,
+    # observed at 50-100MB+ per test session. Left as-is, every local
+    # `pytest` run (and every one of this session's many invocations)
+    # leaves one behind under the OS temp dir permanently; found the hard
+    # way when 56 accumulated sessions' worth filled the disk to 0 bytes
+    # free mid-task. Explicit removal here is the safety net regardless of
+    # what cleanup_mode is doing internally.
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -141,6 +152,9 @@ class SeededTenant:
     quote: Quote
     receipt_number: int
     sale_id: str
+    stocktake: Stocktake
+    stocktake_line: StocktakeLine
+    transfer: StockTransfer
 
 
 async def make_tenant(label: str) -> SeededTenant:
@@ -264,6 +278,47 @@ async def make_tenant(label: str) -> SeededTenant:
         receipt_number = uuid.uuid4().int % 900000 + 100000
         receipt = Receipt(business_id=business_id, sale_id=sale.id, receipt_number=receipt_number)
         session.add(receipt)
+
+        second_location = await create_location(
+            session, business_id=business_id, name="Secondary", is_primary=False
+        )
+
+        stocktake = Stocktake(
+            business_id=business_id,
+            location_id=location.id,
+            scope="all",
+            status="counting",
+            started_by_user_id=owner.id,
+            started_at=now,
+        )
+        session.add(stocktake)
+        await session.flush()
+        stocktake_line = StocktakeLine(
+            business_id=business_id,
+            stocktake_id=stocktake.id,
+            product_id=product.id,
+            expected_quantity=Decimal("0"),
+        )
+        session.add(stocktake_line)
+
+        transfer = StockTransfer(
+            business_id=business_id,
+            from_location_id=location.id,
+            to_location_id=second_location.id,
+            status="in_transit",
+            created_by_user_id=owner.id,
+            sent_at=now,
+        )
+        session.add(transfer)
+        await session.flush()
+        session.add(
+            StockTransferLine(
+                business_id=business_id,
+                transfer_id=transfer.id,
+                product_id=product.id,
+                quantity_sent=Decimal("0"),
+            )
+        )
         await session.flush()
 
     return SeededTenant(
@@ -280,6 +335,9 @@ async def make_tenant(label: str) -> SeededTenant:
         quote=quote,
         receipt_number=receipt.receipt_number,
         sale_id=sale.id,
+        stocktake=stocktake,
+        stocktake_line=stocktake_line,
+        transfer=transfer,
     )
 
 

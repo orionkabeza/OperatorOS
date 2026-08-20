@@ -127,6 +127,15 @@ class ProductLocation(Base, UUIDPKMixin, TimestampMixin):
     on_hand: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
     reserved: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
     avg_cost_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # UNUSED, kept rather than dropped in a follow-up migration (see
+    # docs/DECISIONS.md): the stock-take "freeze during count" flag
+    # (spec D.5.4) was originally meant to live here, but this table is
+    # protected by reject_direct_projection_write() -- only
+    # projections/product_stock.py may write it -- and freezing isn't an
+    # event-driven projection update, it's stock-take workflow state. The
+    # actual freeze check (api/routers/stock_stocktake.py::
+    # is_frozen_for_stocktake, used by sales.py) queries Stocktake/
+    # StocktakeLine directly instead. Always False; never read or written.
     frozen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_event_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     updated_at_ledger: Mapped[datetime | None] = mapped_column(

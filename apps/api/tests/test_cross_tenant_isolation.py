@@ -45,6 +45,9 @@ RESOURCE_ID_SEEDS: dict[str, Callable[[SeededTenant], str]] = {
     "quote_id": lambda t: t.quote.id,
     "receipt_number": lambda t: str(t.receipt_number),
     "till_session_id": lambda t: t.till_session.id,
+    "stocktake_id": lambda t: t.stocktake.id,
+    "line_id": lambda t: t.stocktake_line.id,
+    "transfer_id": lambda t: t.transfer.id,
 }
 
 
@@ -148,6 +151,9 @@ async def test_cross_tenant_isolation_every_protected_route(
             tenant_b.quote.id,
             tenant_b.till_session.id,
             tenant_b.sale_id,
+            tenant_b.stocktake.id,
+            tenant_b.stocktake_line.id,
+            tenant_b.transfer.id,
         )
         return any(marker in text for marker in markers)
 

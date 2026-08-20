@@ -30,9 +30,12 @@ from operatoros_api.api.routers import (
     health,
     overview,
     products,
+    products_import,
     receipts,
     sales,
     stock,
+    stock_stocktake,
+    stock_transfers,
     till,
     users,
 )
@@ -83,8 +86,11 @@ def create_app(redis_client: Any = None) -> FastAPI:
     app.include_router(users.router)
     app.include_router(events.router)
     app.include_router(products.router)
+    app.include_router(products_import.router)
     app.include_router(customers.router)
     app.include_router(stock.router)
+    app.include_router(stock_stocktake.router)
+    app.include_router(stock_transfers.router)
     app.include_router(sales.router)
     app.include_router(day.router)
     app.include_router(till.router)

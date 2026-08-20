@@ -39,6 +39,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, text
 
 from operatoros_api.api.deps import RequestContext, idempotency_key_header, require_capability
+from operatoros_api.api.routers.stock_stocktake import is_frozen_for_stocktake
 from operatoros_api.audit_log import append_audit_log
 from operatoros_api.capabilities import resolve_effective_capabilities
 from operatoros_api.idempotency_service import (
@@ -207,6 +208,14 @@ async def _check_stock(
             )
         )
         row = result.scalar_one_or_none()
+        if await is_frozen_for_stocktake(ctx.session, location_id, line.product_id):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Product {line.product_id} is frozen for a stock-take in progress at this "
+                    "location and can't be sold until the count is posted."
+                ),
+            )
         on_hand = row.on_hand if row else Decimal("0")
         reserved = row.reserved if row else Decimal("0")
         available = on_hand - reserved
