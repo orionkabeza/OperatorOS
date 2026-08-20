@@ -13,6 +13,8 @@ rejecting it, so the 0-default is enforced by simply not trusting a
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import or_, select
 
@@ -30,13 +32,20 @@ from operatoros_api.idempotency_service import (
 )
 from operatoros_api.ledger import EnvelopeValidationError, EventEnvelopeInput, append_event
 from operatoros_api.models.customers import Customer, CustomerBalance
+from operatoros_api.models.segments import BroadcastSend, CustomerSegment
+from operatoros_api.notifications import get_notification_sender
 from operatoros_api.schemas.customers import (
+    BroadcastSendOut,
+    BroadcastSendRequest,
     CreditLimitChangeRequest,
     CustomerCreate,
     CustomerOut,
     CustomerUpdate,
+    SegmentCreateRequest,
+    SegmentOut,
 )
 from operatoros_api.security.identifiers import hash_identifier
+from operatoros_api.segments_engine import segment_member_ids
 
 router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 
@@ -76,6 +85,166 @@ async def list_customers(
         stmt = stmt.where(or_(Customer.name.ilike(like), Customer.phone.ilike(like)))
     result = await ctx.session.execute(stmt.order_by(Customer.name).limit(500))
     return [await _to_customer_out(ctx, c) for c in result.scalars()]
+
+
+# --- segments and broadcast (spec D.6.8, plan §0.7) --------------------------
+#
+# Registered BEFORE `/{customer_id}` deliberately: FastAPI/Starlette
+# matches routes in registration order, and `/{customer_id}` would
+# otherwise greedily match literal `/segments` and `/broadcast` paths
+# too (as `customer_id="segments"`), returning a spurious 404 from
+# `get_customer` instead of ever reaching these handlers -- hit this for
+# real while writing these endpoints, see docs/DECISIONS.md.
+
+
+@router.post("/segments", response_model=SegmentOut, status_code=201)
+async def create_segment(
+    body: SegmentCreateRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("customer.manage")),
+) -> SegmentOut:
+    raw_body = await request.body()
+    fingerprint = fingerprint_request(
+        "POST", "/api/v1/customers/segments", ctx.business_id, raw_body
+    )
+    claimed_id = await claim_or_replay(
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint="POST /api/v1/customers/segments",
+        fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            raise RuntimeError("idempotency row has no response_body despite being complete")
+        return SegmentOut(**existing.response_body)
+
+    segment = CustomerSegment(
+        business_id=ctx.business_id,
+        name=body.name,
+        filter_spec=body.filter_spec,
+        created_by_user_id=ctx.user_id,
+    )
+    ctx.session.add(segment)
+    await ctx.session.flush()
+
+    members = await segment_member_ids(ctx.session, ctx.business_id, body.filter_spec)
+    out = SegmentOut(
+        id=segment.id, name=segment.name, filter_spec=segment.filter_spec, member_count=len(members)
+    )
+    await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
+    return out
+
+
+@router.get("/segments", response_model=list[SegmentOut])
+async def list_segments(
+    ctx: RequestContext = Depends(require_capability("report.view")),
+) -> list[SegmentOut]:
+    result = await ctx.session.execute(
+        select(CustomerSegment).where(CustomerSegment.business_id == ctx.business_id)
+    )
+    out: list[SegmentOut] = []
+    for segment in result.scalars():
+        members = await segment_member_ids(ctx.session, ctx.business_id, segment.filter_spec)
+        out.append(
+            SegmentOut(
+                id=segment.id,
+                name=segment.name,
+                filter_spec=segment.filter_spec,
+                member_count=len(members),
+            )
+        )
+    return out
+
+
+@router.post("/broadcast", response_model=BroadcastSendOut, status_code=201)
+async def send_broadcast(
+    body: BroadcastSendRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("customer.broadcast")),
+) -> BroadcastSendOut:
+    """D.6.8: "compose a WhatsApp message..., pick a segment, preview the
+    recipient count, and send." Every send is logged with its segment
+    snapshot (the member ids AT SEND TIME), so "who did we message and
+    when" stays answerable even if the segment's live membership changes
+    afterward -- see models/segments.py's docstring."""
+    raw_body = await request.body()
+    fingerprint = fingerprint_request(
+        "POST", "/api/v1/customers/broadcast", ctx.business_id, raw_body
+    )
+    claimed_id = await claim_or_replay(
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint="POST /api/v1/customers/broadcast",
+        fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            raise RuntimeError("idempotency row has no response_body despite being complete")
+        return BroadcastSendOut(**existing.response_body)
+
+    segment = await ctx.session.get(CustomerSegment, body.segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    member_ids = await segment_member_ids(ctx.session, ctx.business_id, segment.filter_spec)
+    members_result = await ctx.session.execute(
+        select(Customer).where(Customer.business_id == ctx.business_id, Customer.id.in_(member_ids))
+    )
+    members = list(members_result.scalars())
+
+    sender = get_notification_sender()
+    delivered = 0
+    for member in members:
+        if member.phone:
+            await sender.send(
+                channel="whatsapp", to=member.phone, subject="Broadcast", body=body.message
+            )
+            delivered += 1
+
+    now = datetime.now(UTC)
+    send_row = BroadcastSend(
+        business_id=ctx.business_id,
+        segment_id=segment.id,
+        segment_snapshot={"member_ids": sorted(member_ids)},
+        message=body.message,
+        image_url=body.image_url,
+        link_url=body.link_url,
+        sent_at=now,
+        sent_by_user_id=ctx.user_id,
+        recipient_count=len(members),
+        delivered_count=delivered,
+        read_count=0,
+    )
+    ctx.session.add(send_row)
+    await ctx.session.flush()
+
+    out = BroadcastSendOut(
+        id=send_row.id,
+        segment_id=send_row.segment_id,
+        message=send_row.message,
+        sent_at=send_row.sent_at.isoformat(),
+        recipient_count=send_row.recipient_count,
+        delivered_count=send_row.delivered_count,
+        read_count=send_row.read_count,
+    )
+    await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
+    return out
 
 
 @router.get("/{customer_id}", response_model=CustomerOut)

@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     # Correlation / logging
     log_level: str = Field(default="INFO")
 
+    # File storage (storage.py::LocalDiskStorage -- see that module's
+    # docstring for why this is local disk, not S3, this phase).
+    uploads_dir: str = Field(default="uploads")
+
     @field_validator("jwt_secret")
     @classmethod
     def _warn_default_secret(cls, v: str) -> str:

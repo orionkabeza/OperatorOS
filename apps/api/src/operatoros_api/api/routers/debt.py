@@ -23,6 +23,7 @@ for potentially every customer in the business at once.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -48,10 +49,11 @@ from operatoros_api.models.customers import Customer, CustomerBalance
 from operatoros_api.models.events import Event
 from operatoros_api.models.paylink import PayLink
 from operatoros_api.models.payments import PaymentAllocation
-from operatoros_api.models.reminders import ReminderLog
+from operatoros_api.models.reminders import ReminderLog, ReminderSchedule, ReminderScheduleStep
 from operatoros_api.models.sales import Sale, SalePayment
 from operatoros_api.notifications import get_notification_sender
 from operatoros_api.projections.money_location_balance import payment_method_account_key
+from operatoros_api.reminders_engine import DueReminder, compute_due_reminders, render_template
 from operatoros_api.schemas.debt import (
     AgeingBucketOut,
     AllocationOut,
@@ -68,6 +70,16 @@ from operatoros_api.schemas.debt import (
     WriteOffRequest,
 )
 from operatoros_api.schemas.pay import PayLinkCreateOut, PayLinkCreateRequest
+from operatoros_api.schemas.reminders import (
+    ReminderDigestEntryOut,
+    ReminderDigestSendRequest,
+    ReminderPreviewOut,
+    ReminderPreviewRequest,
+    ReminderScheduleCreateRequest,
+    ReminderScheduleOut,
+    ReminderScheduleUpdateRequest,
+    ReminderStepOut,
+)
 from operatoros_api.security.tokens import create_pay_link_token
 
 router = APIRouter(prefix="/api/v1/debt", tags=["debt"])
@@ -881,4 +893,372 @@ async def create_pay_link(
         token=token, amount_minor=amount_minor, expires_at=expires_at.isoformat()
     )
     await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
+    return out
+
+
+# --- reminder schedules (spec D.6.5, plan §0.4) ------------------------------
+
+
+def _schedule_out(
+    schedule: ReminderSchedule, steps: list[ReminderScheduleStep]
+) -> ReminderScheduleOut:
+    return ReminderScheduleOut(
+        id=schedule.id,
+        name=schedule.name,
+        customer_id=schedule.customer_id,
+        paused=schedule.paused,
+        approval_mode=schedule.approval_mode,
+        quiet_hours_start=schedule.quiet_hours_start,
+        quiet_hours_end=schedule.quiet_hours_end,
+        max_per_customer_hours=schedule.max_per_customer_hours,
+        steps=[
+            ReminderStepOut(
+                id=s.id,
+                step_order=s.step_order,
+                offset_days=s.offset_days,
+                label=s.label,
+                channel=s.channel,
+                template_key=s.template_key,
+                templates=s.templates,
+            )
+            for s in sorted(steps, key=lambda s: s.step_order)
+        ],
+    )
+
+
+@router.post("/reminder-schedules", response_model=ReminderScheduleOut, status_code=201)
+async def create_reminder_schedule(
+    body: ReminderScheduleCreateRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("debt.manage_reminders")),
+) -> ReminderScheduleOut:
+    raw_body = await request.body()
+    fingerprint = fingerprint_request(
+        "POST", "/api/v1/debt/reminder-schedules", ctx.business_id, raw_body
+    )
+    claimed_id = await claim_or_replay(
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint="POST /api/v1/debt/reminder-schedules",
+        fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            raise RuntimeError("idempotency row has no response_body despite being complete")
+        return ReminderScheduleOut(**existing.response_body)
+
+    if body.customer_id is None:
+        # Friendly 409 ahead of the DB's own partial unique index
+        # (uq_reminder_schedules_business_default, migration 0015) --
+        # that index is the actual guarantee (a plain UniqueConstraint on
+        # a nullable column does NOT stop two NULLs, see
+        # docs/DECISIONS.md), this is just a nicer error than a raw
+        # constraint-violation 500 for the common case of someone trying
+        # to create a second default.
+        existing_default_result = await ctx.session.execute(
+            select(ReminderSchedule).where(
+                ReminderSchedule.business_id == ctx.business_id,
+                ReminderSchedule.customer_id.is_(None),
+            )
+        )
+        if existing_default_result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="A default reminder schedule already exists for this business.",
+            )
+
+    schedule = ReminderSchedule(
+        business_id=ctx.business_id,
+        customer_id=body.customer_id,
+        name=body.name,
+        paused=body.paused,
+        approval_mode=body.approval_mode,
+        quiet_hours_start=body.quiet_hours_start,
+        quiet_hours_end=body.quiet_hours_end,
+        max_per_customer_hours=body.max_per_customer_hours,
+    )
+    ctx.session.add(schedule)
+    await ctx.session.flush()
+
+    steps: list[ReminderScheduleStep] = []
+    for step_in in body.steps:
+        step = ReminderScheduleStep(
+            business_id=ctx.business_id,
+            schedule_id=schedule.id,
+            step_order=step_in.step_order,
+            offset_days=step_in.offset_days,
+            label=step_in.label,
+            channel=step_in.channel,
+            template_key=step_in.template_key,
+            templates=step_in.templates,
+        )
+        ctx.session.add(step)
+        steps.append(step)
+    await ctx.session.flush()
+
+    out = _schedule_out(schedule, steps)
+    await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
+    return out
+
+
+@router.get("/reminder-schedules", response_model=list[ReminderScheduleOut])
+async def list_reminder_schedules(
+    ctx: RequestContext = Depends(require_capability("debt.manage_reminders")),
+) -> list[ReminderScheduleOut]:
+    schedules_result = await ctx.session.execute(
+        select(ReminderSchedule).where(ReminderSchedule.business_id == ctx.business_id)
+    )
+    schedules = list(schedules_result.scalars())
+    steps_result = await ctx.session.execute(
+        select(ReminderScheduleStep).where(ReminderScheduleStep.business_id == ctx.business_id)
+    )
+    steps_by_schedule: dict[str, list[ReminderScheduleStep]] = {}
+    for step in steps_result.scalars():
+        steps_by_schedule.setdefault(step.schedule_id, []).append(step)
+    return [_schedule_out(s, steps_by_schedule.get(s.id, [])) for s in schedules]
+
+
+@router.patch("/reminder-schedules/{schedule_id}", response_model=ReminderScheduleOut)
+async def update_reminder_schedule(
+    schedule_id: str,
+    body: ReminderScheduleUpdateRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("debt.manage_reminders")),
+) -> ReminderScheduleOut:
+    raw_body = await request.body()
+    fingerprint = fingerprint_request(
+        "PATCH", f"/api/v1/debt/reminder-schedules/{schedule_id}", ctx.business_id, raw_body
+    )
+    claimed_id = await claim_or_replay(
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint=f"PATCH /api/v1/debt/reminder-schedules/{schedule_id}",
+        fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            raise RuntimeError("idempotency row has no response_body despite being complete")
+        return ReminderScheduleOut(**existing.response_body)
+
+    schedule = await ctx.session.get(ReminderSchedule, schedule_id)
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    if body.name is not None:
+        schedule.name = body.name
+    if body.paused is not None:
+        schedule.paused = body.paused
+    if body.approval_mode is not None:
+        schedule.approval_mode = body.approval_mode
+    if body.quiet_hours_start is not None:
+        schedule.quiet_hours_start = body.quiet_hours_start
+    if body.quiet_hours_end is not None:
+        schedule.quiet_hours_end = body.quiet_hours_end
+    if body.max_per_customer_hours is not None:
+        schedule.max_per_customer_hours = body.max_per_customer_hours
+    await ctx.session.flush()
+
+    steps_result = await ctx.session.execute(
+        select(ReminderScheduleStep).where(ReminderScheduleStep.schedule_id == schedule_id)
+    )
+    out = _schedule_out(schedule, list(steps_result.scalars()))
+    await complete(ctx.session, claimed_id=claimed_id, status_code=200, body=out.model_dump())
+    return out
+
+
+@router.post("/reminder-schedules/preview", response_model=ReminderPreviewOut)
+async def preview_reminder_template(
+    body: ReminderPreviewRequest,
+    ctx: RequestContext = Depends(require_capability("debt.manage_reminders")),
+) -> ReminderPreviewOut:
+    """D.6.5: "A live preview renders with real data from the selected
+    customer." Renders `body.template` (the in-progress edit, not
+    necessarily a saved step yet) against the named customer's real
+    oldest-open-invoice figures -- no pay link is minted for a preview
+    (that would create a live, spendable token for something that may
+    never be sent)."""
+    customer = await ctx.session.get(Customer, body.customer_id)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    invoices = await open_invoices_for_customer(ctx.session, ctx.business_id, body.customer_id)
+    if invoices:
+        oldest = invoices[0]
+        amount_minor = oldest.remaining_minor
+        overdue_days = days_overdue(oldest.due_date_at, datetime.now(UTC))
+        oldest_invoice_date = oldest.occurred_at.date().isoformat()
+    else:
+        amount_minor = 0
+        overdue_days = 0
+        oldest_invoice_date = ""
+
+    rendered = render_template(
+        body.template,
+        customer_name=customer.name,
+        amount_minor=amount_minor,
+        days_overdue_value=overdue_days,
+        oldest_invoice_date=oldest_invoice_date,
+        pay_link_url="https://pay.example/preview-only",
+    )
+    return ReminderPreviewOut(rendered=rendered)
+
+
+async def _mint_pay_link_url(ctx_or_session, business_id: str, invoice: OpenInvoice) -> str:
+    sale = await ctx_or_session.get(Sale, invoice.sale_id)
+    location_id = sale.location_id if sale else None
+    if location_id is None:
+        return ""
+    expires_at = datetime.now(UTC) + timedelta(days=7)
+    pay_link = PayLink(
+        business_id=business_id,
+        location_id=location_id,
+        customer_id=invoice.customer_id,
+        amount_minor=invoice.remaining_minor,
+        allocation_hint="auto",
+        expires_at=expires_at,
+        status="pending",
+    )
+    ctx_or_session.add(pay_link)
+    await ctx_or_session.flush()
+    token = create_pay_link_token(
+        pay_link_id=pay_link.id, business_id=business_id, expires_at=expires_at
+    )
+    return f"/pay/{token}"
+
+
+async def send_one_reminder(
+    session, business_id: str, actor_user_id: str | None, due: DueReminder
+) -> None:
+    """Shared by the approval-mode digest's `send` action and the
+    unattended Celery tick (`tasks/reminders.py`) -- exactly one code path
+    ever actually dispatches a reminder, so the guardrail/dedup logic in
+    `reminders_engine.py` can never be bypassed by a second sender."""
+    customer = await session.get(Customer, due.customer_id)
+    step = await session.get(ReminderScheduleStep, due.step_id)
+    if customer is None or step is None:
+        return
+    language = (
+        customer.language
+        if customer.language in step.templates
+        else next(iter(step.templates), None)
+    )
+    template = step.templates.get(language, "") if language else ""
+
+    pay_link_url = await _mint_pay_link_url(session, business_id, due.invoice)
+    rendered = render_template(
+        template,
+        customer_name=customer.name,
+        amount_minor=due.invoice.remaining_minor,
+        days_overdue_value=due.days_overdue,
+        oldest_invoice_date=due.invoice.occurred_at.date().isoformat(),
+        pay_link_url=pay_link_url,
+    )
+
+    if customer.phone:
+        await get_notification_sender().send(
+            channel=due.channel, to=customer.phone, subject=due.label, body=rendered
+        )
+
+    with contextlib.suppress(EnvelopeValidationError):
+        await append_event(
+            session,
+            EventEnvelopeInput(
+                business_id=business_id,
+                type="REMINDER_SENT",
+                payload={
+                    "customer_id": due.customer_id,
+                    "channel": due.channel,
+                    "template_key": due.template_key,
+                    "amount_minor": due.invoice.remaining_minor,
+                },
+                actor_user_id=actor_user_id,
+                actor_source="system" if actor_user_id is None else "api",
+            ),
+        )
+
+
+@router.get("/reminder-digest", response_model=list[ReminderDigestEntryOut])
+async def get_reminder_digest(
+    ctx: RequestContext = Depends(require_capability("debt.send_reminder")),
+) -> list[ReminderDigestEntryOut]:
+    """D.6.5: "A daily digest lists the queued messages with tick boxes."
+    Computed live on every call -- nothing about "who's due" is persisted
+    state, so this is always the current, correct answer, never a stale
+    cached batch."""
+    now = datetime.now(UTC)
+    invoices_by_customer = await open_invoices_for_business(ctx.session, ctx.business_id)
+    due = await compute_due_reminders(ctx.session, ctx.business_id, invoices_by_customer, now)
+    return [
+        ReminderDigestEntryOut(
+            customer_id=d.customer_id,
+            customer_name=d.customer_name,
+            step_id=d.step_id,
+            step_order=d.step_order,
+            label=d.label,
+            channel=d.channel,
+            template_key=d.template_key,
+            sale_id=d.invoice.sale_id,
+            amount_minor=d.invoice.remaining_minor,
+            days_overdue=d.days_overdue,
+        )
+        for d in due
+    ]
+
+
+@router.post("/reminder-digest/send", status_code=200)
+async def send_reminder_digest(
+    body: ReminderDigestSendRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("debt.send_reminder")),
+) -> dict:
+    raw_body = await request.body()
+    fingerprint = fingerprint_request(
+        "POST", "/api/v1/debt/reminder-digest/send", ctx.business_id, raw_body
+    )
+    claimed_id = await claim_or_replay(
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint="POST /api/v1/debt/reminder-digest/send",
+        fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            raise RuntimeError("idempotency row has no response_body despite being complete")
+        return existing.response_body
+
+    now = datetime.now(UTC)
+    invoices_by_customer = await open_invoices_for_business(ctx.session, ctx.business_id)
+    due = await compute_due_reminders(ctx.session, ctx.business_id, invoices_by_customer, now)
+    if body.customer_ids:
+        due = [d for d in due if d.customer_id in set(body.customer_ids)]
+
+    for d in due:
+        await send_one_reminder(ctx.session, ctx.business_id, ctx.user_id, d)
+    await ctx.session.flush()
+
+    out = {"sent": len(due)}
+    await complete(ctx.session, claimed_id=claimed_id, status_code=200, body=out)
     return out

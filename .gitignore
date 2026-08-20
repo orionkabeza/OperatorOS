@@ -31,6 +31,11 @@ htmlcov/
 legacy/lib/generated/
 apps/api/**/__generated__/
 
+# Local-disk file storage (storage.py::LocalDiskStorage) -- receipt photo
+# uploads land here in local dev/tests; a real S3-compatible backend
+# replaces this seam before production, per docs/DECISIONS.md.
+apps/api/uploads/
+
 # Agent tooling — worktree metadata for background agents, machine-local only
 .claude/
 

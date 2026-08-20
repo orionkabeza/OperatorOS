@@ -29,6 +29,7 @@ from operatoros_api.api.routers import (
     day,
     debt,
     events,
+    expenses,
     health,
     momo,
     overview,
@@ -104,6 +105,7 @@ def create_app(redis_client: Any = None) -> FastAPI:
     app.include_router(momo.router)
     app.include_router(cashbox.router)
     app.include_router(pay.router)
+    app.include_router(expenses.router)
 
     return app
 

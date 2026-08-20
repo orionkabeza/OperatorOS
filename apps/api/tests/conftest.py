@@ -35,8 +35,10 @@ from operatoros_api.main import create_app
 from operatoros_api.models.catalog import Category, Product, Unit
 from operatoros_api.models.customers import Customer
 from operatoros_api.models.day_till import DaySession, TillSession
+from operatoros_api.models.expenses import Expense, RecurringExpense
 from operatoros_api.models.momo import MomoTransaction
 from operatoros_api.models.money_locations import MoneyLocation
+from operatoros_api.models.reminders import ReminderSchedule
 from operatoros_api.models.sales import Quote, QuoteLine, Receipt, Sale
 from operatoros_api.models.stock import Stocktake, StocktakeLine, StockTransfer, StockTransferLine
 from operatoros_api.models.tenancy import Business, Location, Role, User
@@ -161,6 +163,9 @@ class SeededTenant:
     # applied to the new resource types this phase's routers introduce.
     money_location: MoneyLocation
     momo_transaction: MomoTransaction
+    expense: Expense
+    recurring_expense: RecurringExpense
+    reminder_schedule: ReminderSchedule
 
 
 async def make_tenant(label: str) -> SeededTenant:
@@ -348,6 +353,43 @@ async def make_tenant(label: str) -> SeededTenant:
             status="unmatched",
         )
         session.add(momo_transaction)
+
+        expense = Expense(
+            business_id=business_id,
+            location_id=location.id,
+            amount_minor=5000,
+            category="Other",
+            money_location="till",
+            expense_date=date.today(),
+            status="pending_approval",
+            created_by_user_id=owner.id,
+        )
+        session.add(expense)
+
+        recurring_expense = RecurringExpense(
+            business_id=business_id,
+            location_id=location.id,
+            amount_minor=300000,
+            category="Rent",
+            money_location="bank",
+            interval="monthly",
+            next_run_date=date.today(),
+            active=True,
+            created_by_user_id=owner.id,
+        )
+        session.add(recurring_expense)
+
+        # A per-CUSTOMER override, not the business default -- a business
+        # only ever has one default (customer_id IS NULL), enforced by a
+        # genuine partial unique index (migration 0015, see
+        # docs/DECISIONS.md); seeding one here as a "default" would
+        # collide with any test that creates its own default via the API
+        # (tests/test_reminders.py does exactly that). An override is a
+        # real, independent resource that still needs isolation coverage.
+        reminder_schedule = ReminderSchedule(
+            business_id=business_id, customer_id=customer.id, name="Customer override"
+        )
+        session.add(reminder_schedule)
         await session.flush()
 
     return SeededTenant(
@@ -369,6 +411,9 @@ async def make_tenant(label: str) -> SeededTenant:
         transfer=transfer,
         money_location=money_location,
         momo_transaction=momo_transaction,
+        expense=expense,
+        recurring_expense=recurring_expense,
+        reminder_schedule=reminder_schedule,
     )
 
 

@@ -70,6 +70,7 @@ CAPABILITIES: dict[str, str] = {
     "momo.reconcile": "Match, dismiss, or otherwise act on MoMo reconciliation rows.",
     "expense.record": "Record an expense.",
     "expense.approve": "Approve or reject an expense above the approval threshold.",
+    "customer.broadcast": "Send a broadcast message to a customer segment.",
 }
 
 DEFAULT_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -108,6 +109,7 @@ DEFAULT_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "momo.reconcile",
             "expense.record",
             "expense.approve",
+            "customer.broadcast",
         }
     ),
     "cashier": frozenset(

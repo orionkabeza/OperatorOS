@@ -35,3 +35,32 @@ class CustomerOut(ApiModel):
     balance_minor: int
     limit_used_percent: int
     oldest_unpaid_at: str | None
+
+
+class SegmentCreateRequest(ApiModel):
+    name: str
+    filter_spec: dict
+
+
+class SegmentOut(ApiModel):
+    id: str
+    name: str
+    filter_spec: dict
+    member_count: int
+
+
+class BroadcastSendRequest(ApiModel):
+    segment_id: str
+    message: str
+    image_url: str | None = None
+    link_url: str | None = None
+
+
+class BroadcastSendOut(ApiModel):
+    id: str
+    segment_id: str | None
+    message: str
+    sent_at: str
+    recipient_count: int
+    delivered_count: int
+    read_count: int

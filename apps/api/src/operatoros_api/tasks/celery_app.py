@@ -19,7 +19,12 @@ celery_app = Celery(
     "operatoros",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["operatoros_api.tasks.projection_audit", "operatoros_api.tasks.momo_settlement"],
+    include=[
+        "operatoros_api.tasks.projection_audit",
+        "operatoros_api.tasks.momo_settlement",
+        "operatoros_api.tasks.recurring_expenses",
+        "operatoros_api.tasks.reminders",
+    ],
 )
 celery_app.conf.timezone = "UTC"
 celery_app.conf.task_always_eager = False
@@ -27,5 +32,17 @@ celery_app.conf.beat_schedule = {
     "nightly-projection-audit": {
         "task": "operatoros_api.tasks.projection_audit.run_projection_audit",
         "schedule": crontab(hour=2, minute=0),
+    },
+    "recurring-expense-drafts": {
+        "task": "operatoros_api.tasks.recurring_expenses.run_recurring_expenses",
+        "schedule": crontab(hour=1, minute=0),
+    },
+    "reminder-schedule-tick": {
+        # Plan §0.4: reminders check quiet hours/frequency guardrails
+        # themselves per-send, so this can run frequently without
+        # over-sending -- every 15 minutes catches a due step promptly
+        # without hammering the DB.
+        "task": "operatoros_api.tasks.reminders.run_reminder_tick",
+        "schedule": crontab(minute="*/15"),
     },
 }

@@ -4,6 +4,7 @@ from operatoros_api.models.catalog import Category, Product, ProductAlias, Produ
 from operatoros_api.models.customers import Customer, CustomerBalance
 from operatoros_api.models.day_till import DaySession, TillSession
 from operatoros_api.models.events import Event
+from operatoros_api.models.expenses import Expense, RecurringExpense
 from operatoros_api.models.idempotency import IdempotencyKey
 from operatoros_api.models.momo import MomoProviderCredential, MomoTransaction, MomoWebhookNonce
 from operatoros_api.models.money_locations import MoneyLocation
@@ -15,7 +16,7 @@ from operatoros_api.models.projections import (
     ProductDailyMovement,
     StaffDailyTotals,
 )
-from operatoros_api.models.reminders import ReminderLog
+from operatoros_api.models.reminders import ReminderLog, ReminderSchedule, ReminderScheduleStep
 from operatoros_api.models.sales import (
     Quote,
     QuoteLine,
@@ -27,6 +28,7 @@ from operatoros_api.models.sales import (
     SaleLine,
     SalePayment,
 )
+from operatoros_api.models.segments import BroadcastSend, CustomerSegment
 from operatoros_api.models.stock import (
     StockMovement,
     Stocktake,
@@ -98,4 +100,10 @@ __all__ = [
     "MomoTransaction",
     "MomoWebhookNonce",
     "PayLink",
+    "Expense",
+    "RecurringExpense",
+    "ReminderSchedule",
+    "ReminderScheduleStep",
+    "CustomerSegment",
+    "BroadcastSend",
 ]
