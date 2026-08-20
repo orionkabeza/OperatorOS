@@ -1,3 +1,4 @@
+from operatoros_api.models.audit_log import AuditLogEntry
 from operatoros_api.models.base import Base
 from operatoros_api.models.events import Event
 from operatoros_api.models.idempotency import IdempotencyKey
@@ -18,6 +19,7 @@ from operatoros_api.models.tenancy import (
 
 __all__ = [
     "Base",
+    "AuditLogEntry",
     "Business",
     "Location",
     "User",

@@ -12,9 +12,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from operatoros_api.api.deps import RequestContext, get_current_context, idempotency_key_header, require_capability
+from operatoros_api.audit_log import append_audit_log
 from operatoros_api.idempotency_service import claim_or_replay, complete, fingerprint_request, get_existing
-from operatoros_api.models.tenancy import Role, User, UserLocation
-from operatoros_api.schemas.users import MeOut, UserCreateRequest, UserOut
+from operatoros_api.models.tenancy import Role, User, UserGrant, UserLocation
+from operatoros_api.schemas.users import GrantRequest, MeOut, RoleChangeRequest, UserCreateRequest, UserOut
 from operatoros_api.security.identifiers import hash_identifier
 from operatoros_api.security.passwords import hash_secret
 from sqlalchemy import select
@@ -106,5 +107,109 @@ async def create_user(
         )
 
     out = _to_user_out(user, role.key)
+    await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
+    return out
+
+
+@router.post("/{user_id}/role", response_model=UserOut)
+async def change_user_role(
+    user_id: str,
+    body: RoleChangeRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("role.manage")),
+) -> UserOut:
+    """Writes a ROLE_CHANGED audit_log entry (spec G.1 / approved plan §6).
+    This is deliberately minimal -- no feature UI calls it yet -- but it's
+    a real, capability-gated, RLS-protected mutation, not a stub: it's how
+    the audit log actually receives a ROLE_CHANGED event rather than one
+    only ever asserted about in a unit test.
+    """
+    raw_body = await request.body()
+    fingerprint = fingerprint_request("POST", f"/api/v1/users/{user_id}/role", ctx.business_id, raw_body)
+    claimed_id = await claim_or_replay(
+        ctx.session, business_id=ctx.business_id, key=idempotency_key,
+        endpoint="POST /api/v1/users/{user_id}/role", fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(status_code=409, detail="This Idempotency-Key was already used for a different request.")
+        return UserOut(**existing.response_body)
+
+    user = await ctx.session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    new_role_result = await ctx.session.execute(
+        select(Role).where(Role.business_id == ctx.business_id, Role.key == body.role_key)
+    )
+    new_role = new_role_result.scalar_one_or_none()
+    if new_role is None:
+        raise HTTPException(status_code=422, detail="Unknown role.")
+
+    old_role_key = user.role.key
+    user.role_id = new_role.id
+    await ctx.session.flush()
+    await append_audit_log(
+        ctx.session, business_id=ctx.business_id, event_type="ROLE_CHANGED",
+        actor_user_id=ctx.user_id, subject_user_id=user.id,
+        detail={"old_role_key": old_role_key, "new_role_key": new_role.key},
+    )
+
+    out = _to_user_out(user, new_role.key)
+    await complete(ctx.session, claimed_id=claimed_id, status_code=200, body=out.model_dump())
+    return out
+
+
+@router.post("/{user_id}/grants", response_model=UserOut, status_code=201)
+async def override_user_permission(
+    user_id: str,
+    body: GrantRequest,
+    request: Request,
+    idempotency_key: str = Depends(idempotency_key_header),
+    ctx: RequestContext = Depends(require_capability("role.manage")),
+) -> UserOut:
+    """Writes a PERMISSION_OVERRIDDEN audit_log entry -- the per-user
+    grant/revoke layer described in capabilities.py, exposed as a real
+    (if minimal) endpoint so it's exercised end-to-end rather than only
+    at the function level."""
+    if body.effect not in ("grant", "revoke"):
+        raise HTTPException(status_code=422, detail="effect must be 'grant' or 'revoke'.")
+
+    raw_body = await request.body()
+    fingerprint = fingerprint_request("POST", f"/api/v1/users/{user_id}/grants", ctx.business_id, raw_body)
+    claimed_id = await claim_or_replay(
+        ctx.session, business_id=ctx.business_id, key=idempotency_key,
+        endpoint="POST /api/v1/users/{user_id}/grants", fingerprint=fingerprint,
+    )
+    if claimed_id is None:
+        existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(status_code=409, detail="This Idempotency-Key was already used for a different request.")
+        return UserOut(**existing.response_body)
+
+    user = await ctx.session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    ctx.session.add(
+        UserGrant(
+            business_id=ctx.business_id, user_id=user.id, permission_key=body.permission_key,
+            effect=body.effect, location_id=body.location_id, created_by_user_id=ctx.user_id,
+        )
+    )
+    await ctx.session.flush()
+    await append_audit_log(
+        ctx.session, business_id=ctx.business_id, event_type="PERMISSION_OVERRIDDEN",
+        actor_user_id=ctx.user_id, subject_user_id=user.id,
+        detail={
+            "permission_key": body.permission_key,
+            "effect": body.effect,
+            "location_id": body.location_id,
+        },
+    )
+
+    out = _to_user_out(user, user.role.key)
     await complete(ctx.session, claimed_id=claimed_id, status_code=201, body=out.model_dump())
     return out

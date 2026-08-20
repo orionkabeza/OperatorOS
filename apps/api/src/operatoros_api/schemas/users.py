@@ -27,3 +27,13 @@ class MeOut(ApiModel):
     display_name: str
     role_key: str
     location_ids: list[str]
+
+
+class RoleChangeRequest(ApiModel):
+    role_key: str
+
+
+class GrantRequest(ApiModel):
+    permission_key: str
+    effect: str  # "grant" | "revoke"
+    location_id: str | None = None

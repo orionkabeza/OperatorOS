@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from operatoros_api.api.deps import get_public_session, get_redis
+from operatoros_api.audit_log import append_audit_log
 from operatoros_api.capabilities import ROLES_REQUIRING_2FA
 from operatoros_api.config import get_settings
 from operatoros_api.db import tenant_scoped_session
@@ -160,7 +161,16 @@ async def login(
 
         if user is None or not secret_ok or user.status != "active":
             outcome["ok"] = False
+            await append_audit_log(
+                session, business_id=business.id, event_type="LOGIN_FAILED",
+                detail={"identifier_hash": identifier_hash, "reason": "bad_credentials"}, ip=ip,
+            )
         elif user.role.key in ROLES_REQUIRING_2FA and user.totp_enabled:
+            # Credentials check out, but 2FA hasn't been completed yet --
+            # this is neither a completed success nor a failure, so no
+            # audit_log entry fires here. totp_verify() below fires
+            # LOGIN_SUCCEEDED/LOGIN_FAILED once the second factor is
+            # actually checked.
             outcome["ok"] = True
             outcome["totp_required"] = True
             outcome["user_id"] = user.id
@@ -174,6 +184,10 @@ async def login(
                 remember_device=body.remember_device,
             )
             outcome["tokens"] = tokens
+            await append_audit_log(
+                session, business_id=business.id, event_type="LOGIN_SUCCEEDED",
+                actor_user_id=user.id, detail={"device_id": body.device_id}, ip=ip,
+            )
 
     # `async with tenant_scoped_session` has committed by now -- the
     # LoginAttempt row (success or failure) and any issued tokens are
@@ -204,16 +218,30 @@ async def totp_verify(body: TotpVerifyRequest) -> TokenPair:
     result_tokens: TokenPair | None = None
     async with tenant_scoped_session(challenge.business_id) as session:
         user = await session.get(User, challenge.user_id)
-        if user is not None and user.totp_enabled and user.totp_secret_encrypted:
-            secret = decrypt_secret(user.totp_secret_encrypted)
-            if verify_totp_code(secret, body.code):
-                result_tokens = await _issue_session_tokens(
-                    session,
-                    business_id=challenge.business_id,
-                    user=user,
-                    device_id=challenge.device_id,
-                    remember_device=False,
-                )
+        code_ok = (
+            user is not None
+            and user.totp_enabled
+            and bool(user.totp_secret_encrypted)
+            and verify_totp_code(decrypt_secret(user.totp_secret_encrypted), body.code)
+        )
+        if code_ok:
+            result_tokens = await _issue_session_tokens(
+                session,
+                business_id=challenge.business_id,
+                user=user,
+                device_id=challenge.device_id,
+                remember_device=False,
+            )
+            await append_audit_log(
+                session, business_id=challenge.business_id, event_type="LOGIN_SUCCEEDED",
+                actor_user_id=user.id, detail={"device_id": challenge.device_id, "via": "totp"},
+            )
+        else:
+            await append_audit_log(
+                session, business_id=challenge.business_id, event_type="LOGIN_FAILED",
+                actor_user_id=challenge.user_id,
+                detail={"device_id": challenge.device_id, "reason": "bad_totp_code"},
+            )
 
     if result_tokens is None:
         raise HTTPException(status_code=401, detail="That code is wrong or has expired.")
