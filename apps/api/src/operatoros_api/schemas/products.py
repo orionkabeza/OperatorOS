@@ -102,17 +102,41 @@ class ImportPreviewRow(ApiModel):
     row_number: int
     name: str | None = None
     sku: str | None = None
+    barcode: str | None = None
+    category: str | None = None
+    unit: str | None = None
+    cost_price_minor: int | None = None
+    selling_price_minor: int | None = None
+    opening_quantity: str | None = None
     errors: list[str] = []
     is_duplicate: bool = False
 
 
 class ImportPreviewResult(ApiModel):
-    import_token: str
+    """No server-side staging token (see product_import.py's module
+    docstring for the trade-off) -- `/commit` re-sends this same `preview`
+    list back (with any corrections applied) rather than the API holding
+    state between the two calls."""
+
     total_rows: int
     valid_rows: int
     error_rows: int
     duplicate_rows: int
     preview: list[ImportPreviewRow]
+
+
+class ImportCommitRequest(ApiModel):
+    rows: list[ImportPreviewRow]
+    default_unit_id: str
+    opening_location_id: str | None = None
+
+
+class CorrectedTemplateRequest(ApiModel):
+    rows: list[ImportPreviewRow]
+
+
+class CorrectedTemplateResult(ApiModel):
+    csv: str
 
 
 class ImportCommitResult(ApiModel):
