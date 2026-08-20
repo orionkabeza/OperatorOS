@@ -10,10 +10,13 @@ const SIZE_CLASS = {
   table: "text-table",
 } as const;
 
+const EMPHASIS_CLASS = { out: "text-out", watch: "text-watch", in: "text-in" } as const;
+
 export function Money({
   amount,
   size = "body",
   surface = "light",
+  emphasis,
   className,
 }: {
   amount: MinorUnits;
@@ -27,7 +30,17 @@ export function Money({
    * already used.
    */
   surface?: "light" | "dark";
-  className?: string;
+  /**
+   * Forces the figure's color independent of sign — for a semantically
+   * *positive* amount that still needs to read as a warning, e.g. D.4's
+   * "customer's outstanding balance inline next to their name in `--out`"
+   * (a receivable is positive money, not negative — B.3's leading-minus
+   * rule is about actual negative amounts, so this never adds a minus
+   * sign, only recolors). Ignored when the amount is genuinely negative
+   * (that always wins, and always gets the leading minus).
+   */
+  emphasis?: keyof typeof EMPHASIS_CLASS | undefined;
+  className?: string | undefined;
 }) {
   const { negative, figure } = toRwfParts(amount);
   return (
@@ -41,7 +54,7 @@ export function Money({
       <span
         className={clsx(
           SIZE_CLASS[size],
-          negative ? "text-out" : surface === "dark" ? "text-white" : "text-ink",
+          negative ? "text-out" : emphasis ? EMPHASIS_CLASS[emphasis] : surface === "dark" ? "text-white" : "text-ink",
         )}
       >
         {negative ? "-" : ""}

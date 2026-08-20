@@ -22,7 +22,7 @@ export function useOpenDay() {
 export function useCloseDay() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { countedMinor: MinorUnits; reason?: VarianceReason; reasonNote?: string }) => closeDay(input),
+    mutationFn: (input: { countedMinor: MinorUnits; reason?: VarianceReason | undefined; reasonNote?: string | undefined }) => closeDay(input),
     onSuccess: (session) => {
       queryClient.setQueryData(DAY_STATUS_KEY, session);
     },

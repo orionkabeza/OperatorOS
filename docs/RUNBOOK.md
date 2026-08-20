@@ -53,6 +53,28 @@ npm run start -- -p 3100
 
 Everything in `tailwind.config.ts` — colors, type scale, spacing, sizing — comes from `OperatorOS-Spec.md` Part B. If you need a size or color that isn't already a token, add it to the config; don't reach for an arbitrary Tailwind value (`text-[#hex]`, `p-[13px]`) — `npm run lint:web` will fail the build if you do (`apps/web/scripts/check-no-arbitrary-tailwind.mjs`).
 
+### Phase 1: the mock backend (no live `apps/api` needed to develop or test the frontend)
+
+Every screen (Onboarding, Counter, Stock Room, Till sessions, Close the Shop, Overview) is genuinely clickable end to end against an in-memory mock — no need to run `apps/api` at all for frontend work.
+
+- `apps/web/lib/api/*.ts` is the typed client — one file per domain (`products.ts`, `sales.ts`, `day.ts`, `till.ts`, `stock.ts`, `customers.ts`, `receipts.ts`, `overview.ts`, `onboarding.ts`), each exporting plain async functions (`listProducts()`, `recordSale()`, `openDay()`, ...) with request/response types in `lib/api/types.ts`.
+- `apps/web/lib/mock/` is the mock itself: `seed.ts` has realistic Kigali hardware-store demo data (cement, rebar, paint, tools, plumbing, electrical; RWF pricing), `store.ts` is a mutable in-memory "ledger" that mirrors what the real projections will do (a sale decrements stock and updates the till/customer balance in the same call, day-close computes real variance, etc.) — see `docs/DECISIONS.md` for why this is a hand-rolled adapter rather than MSW.
+- `lib/api/config.ts`'s `USE_MOCK_API` constant (`!process.env.NEXT_PUBLIC_API_BASE_URL`) is the *only* place mock-vs-real is decided — every `lib/api/*.ts` function branches there. Set `NEXT_PUBLIC_API_BASE_URL` once `apps/api` is reachable and every function's real-`fetch` branch (already written, just unexercised so far) goes live with no component changes.
+- The mock resets on every full page reload (a plain module-level `let db` in `store.ts`, deliberately not persisted to localStorage/IndexedDB) — expected, not a bug: each Playwright test navigates fresh and gets a clean slate.
+- **First-ever sign-in always goes to Onboarding, not the Shop Floor** (spec D.1) — `lib/api/onboarding.ts` persists progress to `localStorage` (the mock's stand-in for "server-side, resumes on any device") so it survives a reload in the same browser. `e2e/helpers.ts`'s `completeOnboarding()` walks the minimum path (fill Step 1, skip 2–5) for tests that just need to reach the Shop Floor.
+- Manager-PIN-gated flows (discount above threshold, credit-limit override) use a hardcoded demo PIN — `DEMO_MANAGER_PIN` in `lib/constants.ts` (currently `9999`) — same spirit as `demo-auth-store.ts`, must be deleted once real role/permission-scoped PIN verification exists.
+
+### Phase 1 e2e coverage
+
+```
+cd apps/web
+npx playwright test e2e/counter.spec.ts   # sell-for-cash+change, credit-limit block+override, barcode-timing, axe on Counter/Stock Room/Overview
+```
+
+Runs across all three configured viewports (375/768/1440, `playwright.config.ts`) automatically. `e2e/helpers.ts` has the shared sign-in → onboarding → day-open → Counter path every Phase 1 spec starts from.
+
+**A real, non-obvious gotcha found the hard way:** `skipTillOpen()` (in `helpers.ts`) must actively *wait* for the till-open modal, not just check `.isVisible()` once — that modal only mounts after its data queries resolve (a short but real async gap after the day-open mutation settles), and an instant check can miss it, leaving it open and covering the Counter for the rest of the test. If you add a new helper that dismisses an optional modal, wait for it with a bounded timeout, don't just check-and-move-on.
+
 ---
 
 ## Backend

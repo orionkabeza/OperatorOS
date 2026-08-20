@@ -52,9 +52,19 @@ function seedProducts(): Product[] {
     minSellPriceMinor: minorUnits(Math.round(p.costMinor * 1.02)),
     archived: false,
     unitConversions: p.unitConversions ?? [{ unitId: p.unitId, unitName: p.unitName, factorToBase: 1 }],
+    // Per-location stock must sum to the headline figure exactly — split
+    // rather than duplicated across both branches (a real earlier bug here:
+    // giving each location the full onHandUnits made the aggregate onHand
+    // silently drift the first time any stock movement recomputed it from
+    // the location sum instead of the stale top-level field).
     onHand: String(p.onHandUnits),
     locations: [
-      { locationId: LOCATION_ID, locationName: LOCATION_NAME, onHand: String(p.onHandUnits), reserved: "0" },
+      {
+        locationId: LOCATION_ID,
+        locationName: LOCATION_NAME,
+        onHand: String(p.onHandUnits - Math.floor(p.onHandUnits / 3)),
+        reserved: "0",
+      },
       { locationId: LOCATION_ID_2, locationName: LOCATION_NAME_2, onHand: String(Math.floor(p.onHandUnits / 3)), reserved: "0" },
     ],
     ...p,

@@ -114,6 +114,7 @@ const config: Config = {
       control: "40px", // Input, Secondary/Danger/Ghost buttons — B.6
       "control-lg": "44px", // Primary button, PIN boxes, table rows — B.4/B.6/D.1
       rail: "56px", // Tally Rail, top nav — B.5.2/C.2
+      tile: "120px", // D.4 product tile: "140×120px"
     }),
     width: ({ theme }: { theme: (path: string) => Record<string, string> }) => ({
       auto: "auto",
@@ -124,10 +125,30 @@ const config: Config = {
       "control-lg": "44px",
       nav: "220px", // Room nav — B.5.3
       "nav-collapsed": "64px",
+      // D.4 Counter's three-column desktop layout: "CATEGORIES (180px)" /
+      // fluid search+grid / "THE BASKET (420px)" — both literal spec pixel values.
+      categories: "180px",
+      basket: "420px",
+      tile: "140px", // D.4 product tile: "140×120px"
       drawer: "480px", // Drawer — B.6
       "drawer-lg": "720px",
       shutter: "380px", // Shutter card — D.1
+      // D.3/D.11: "Modal (560px, cannot be dismissed without a choice)" — Open
+      // the Shop / Close the Shop's centred dialog width. A genuine new token,
+      // not an arbitrary escape: the spec states this exact pixel value.
+      modal: "560px",
     }),
+    maxWidth: {
+      full: "100%",
+      none: "none",
+      // B.4: "Grid: 12-column, 24px gutter, max content width 1440px" —
+      // the page-level cap every screen already implicitly follows.
+      content: "1440px",
+      // Single-column wizard flows (Onboarding D.2) read better narrower
+      // than the full 1440px content width; 960px is the same reading-width
+      // judgement call the design-reference prototypes use for stacked forms.
+      form: "960px",
+    },
     inset: ({ theme }: { theme: (path: string) => Record<string, string> }) => ({
       auto: "auto",
       full: "100%",
@@ -142,6 +163,10 @@ const config: Config = {
       // explicit at every usage, not implicit.
       keyframes: {
         "shutter-raise": { from: { transform: "translateY(0)" }, to: { transform: "translateY(-100%)" } },
+        // D.11 Close the Shop: the same showpiece motion (B.7 counts
+        // raise/lower as one animation, not two), reversed — a shutter
+        // sliding down to cover the screen rather than up to reveal it.
+        "shutter-lower": { from: { transform: "translateY(-100%)" }, to: { transform: "translateY(0)" } },
         "shutter-fade": { from: { opacity: "1" }, to: { opacity: "0" } },
         "count-up": { from: { opacity: "0.4" }, to: { opacity: "1" } },
         "drawer-slide-in": { from: { transform: "translateX(24px)", opacity: "0" }, to: { transform: "translateX(0)", opacity: "1" } },
@@ -149,10 +174,16 @@ const config: Config = {
       },
       animation: {
         "shutter-raise": "shutter-raise 400ms cubic-bezier(.22,.61,.36,1) forwards",
+        "shutter-lower": "shutter-lower 400ms cubic-bezier(.22,.61,.36,1) forwards",
         "shutter-fade": "shutter-fade 150ms ease-out forwards",
-        "count-up": "count-up 300ms ease-out",
-        "drawer-slide-in": "drawer-slide-in 200ms ease-out",
-        "row-fade-in": "row-fade-in 120ms ease-out",
+        // `forwards` added on all three for consistency with shutter-raise/
+        // -lower/-fade above — without it the end state technically
+        // reverts to "no animation applied" after completion (harmless
+        // here since that coincides with the "to" keyframe for all three,
+        // but explicit is cheaper than relying on that coincidence).
+        "count-up": "count-up 300ms ease-out forwards",
+        "drawer-slide-in": "drawer-slide-in 200ms ease-out forwards",
+        "row-fade-in": "row-fade-in 120ms ease-out forwards",
       },
     },
   },

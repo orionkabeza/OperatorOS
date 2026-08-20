@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../design/Button";
 import { OpenShopModal } from "../day/OpenShopModal";
 import { Shelf } from "./Shelf";
@@ -28,9 +28,22 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
   const { data: day } = useDayStatus();
   const [state, setState] = useState<OnboardingState>(EMPTY_ONBOARDING_STATE);
   const [showOpenShop, setShowOpenShop] = useState(false);
+  // Once the wizard has hydrated from the persisted state (or the user has
+  // made any local change), `state` becomes the single source of truth.
+  // Resyncing from `loaded` on every query-cache update is what caused a
+  // real bug: rapid "Skip this step" clicks each fire a save mutation, and
+  // an OLDER mutation resolving after a NEWER one (network/timer ordering
+  // isn't call ordering) would overwrite the query cache with stale data,
+  // which this effect then pushed back into local state — silently
+  // reverting the step counter backwards. Hydrate once, then only ever
+  // move forward through explicit local `persist()` calls.
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
-    if (loaded) setState(loaded);
+    if (loaded && !hydratedRef.current) {
+      hydratedRef.current = true;
+      setState(loaded);
+    }
   }, [loaded]);
 
   useEffect(() => {

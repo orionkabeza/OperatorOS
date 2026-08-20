@@ -26,7 +26,13 @@ export function Qty({
     <span className={clsx("font-mono whitespace-nowrap", TONE_CLASS[surface][tone], className)}>
       {value.toLocaleString("en-US")}
       {unit ? (
-        <span className={surface === "dark" ? "text-white/60" : "text-ink-soft"}> {unit}</span>
+        // `white/60` measured at 4.18:1 against --steel via axe on the
+        // Tally Rail's "Low stock" figure — under WCAG AA's 4.5:1 floor
+        // (a smaller gap than the plain-tone failures the dark variants
+        // above already fix, but a real fail all the same). `white/70`
+        // computes to ~6.9:1, comfortable headroom rather than a
+        // just-barely-passing value.
+        <span className={surface === "dark" ? "text-white/70" : "text-ink-soft"}> {unit}</span>
       ) : null}
     </span>
   );

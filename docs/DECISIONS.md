@@ -318,3 +318,63 @@ no-float-money gate: OK
 **Why:** `capabilities.py`'s own Phase 0 docstring already documents this as expected, cheap per-phase growth ("the exact bundle membership will be revisited as each phase's features land... a data change, not a mechanism change") — distinct from the events_registry.py event-type freeze the task brief called out explicitly. Customer profile edits/credit-limit changes, recording a return within the normal window, and posting a stock-take all needed a capability distinct from the closest Phase 0 analogues (`user.manage`, `sale.void`, `stock.adjust` respectively) to match spec F.1's actual role boundaries (e.g. a Cashier can process an ordinary return but not write off debt or override a credit limit).
 
 **How to apply:** Same pattern for any future phase's new capability needs — add the key, describe it, assign it in `DEFAULT_ROLE_CAPABILITIES` per spec F.1's table, no schema/mechanism change required.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: a hand-rolled mock adapter, not MSW
+
+**Decision:** `apps/web/lib/mock/` (store.ts + seed.ts) is a plain in-memory module, not Mock Service Worker. Every `lib/api/*.ts` function branches on a single `USE_MOCK_API` constant (`lib/api/config.ts`) and calls either the mock store directly or a real `fetch` — never an intercepted network request.
+
+**Why:** The task brief offered either MSW or "a simple fetch-intercepting dev-only adapter." MSW's browser mode needs a generated `mockServiceWorker.js` registered as a real Service Worker, which (a) is one more moving part to keep in sync with the strict, nonce-based CSP (service worker registration and its own fetch interception have their own CSP/scope implications not otherwise exercised by this app) and (b) would need `msw/node` wired up separately for Vitest and yet another config surface for Playwright, three integration points for one seam. The direct-branch adapter needs zero registration, works identically whether the code runs under Vitest (jsdom), Playwright (real Chromium), or `next dev`, and the swap point for the real backend is one file (`config.ts`'s `USE_MOCK_API`) — flip it and every already-written `apiRequest(...)` call path (present in every `lib/api/*.ts` function today, just unexercised) becomes live with no component changes. Same spirit as `lib/demo-auth-store.ts`'s Phase 0 precedent: temporary, clearly marked, swappable without touching callers.
+
+**Alternatives rejected:**
+- *MSW in browser + node mode.* Rejected — real value (byte-accurate network-layer interception, DevTools-visible requests) that this project doesn't need yet, since there's no real backend to contract-test against this phase; the cost (service worker + CSP interaction, two runtime configs) wasn't worth paying for that value now.
+
+**How to apply:** When `apps/api` is live and reachable, set `NEXT_PUBLIC_API_BASE_URL` and `USE_MOCK_API` flips to `false` automatically (`!process.env.NEXT_PUBLIC_API_BASE_URL`) — no code changes elsewhere. If a future phase genuinely needs network-layer testing (e.g. verifying retry/timeout behaviour, or the `Idempotency-Key` header actually reaching the wire), that's the point to add MSW specifically for that test file, not replace this adapter wholesale.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: real CSP violation from Radix's scroll-lock — fixed with a nonce, not a CSP weakening
+
+**Decision:** `app/providers.tsx` now calls `setNonce()` from the `get-nonce` package (added as a direct dependency) with the same per-request nonce `middleware.ts` already generates for `script-src`, read off the existing `<meta name="x-nonce">` tag. `middleware.ts`'s CSP gained `style-src-elem 'self' 'nonce-${nonce}'` (previously `'self'` only).
+
+**Why:** Adding `@radix-ui/react-dropdown-menu` and `@radix-ui/react-tabs` for the Counter/Stock Room screens surfaced a real, previously-latent bug: every Radix Dialog-family primitive (`Dialog`, `Menu`/`DropdownMenu`) depends on `react-remove-scroll` for body scroll-locking, which injects a genuine `<style>` element via `react-style-singleton` to hide the scrollbar and compensate its width — this has been true since Phase 0's `ConfirmDialog`/`Drawer` started using `@radix-ui/react-dialog`, but no Phase 0 test asserted zero console/CSP errors *after actually opening a Dialog* (the shutter/design smoke tests check the page shell, not an opened modal's after-effects). Confirmed via a `securitypolicyviolation` listener (same method as the Phase 0 CSP fix in this file) that the violated directive was `style-src-elem`, not `style-src-attr` — this is a real `<style>` tag, not an inline `style=""` attribute, so the existing `style-src-attr 'unsafe-inline'` carve-out doesn't and shouldn't cover it. `react-style-singleton` already supports exactly this scenario via `get-nonce`'s `setNonce()`; wiring the app's own per-request secret nonce through it keeps "no `unsafe-inline` anywhere" strictly true — an attacker still cannot inject an arbitrary `<style>` element without knowing that request's nonce, which is the same guarantee `script-src`'s nonce already provides.
+
+**Alternatives rejected:**
+- *Add `style-src-elem 'unsafe-inline'`.* Rejected — this is exactly the blanket weakening spec G.1 forbids and the whole nonce architecture exists to avoid; a nonce achieves the same functional outcome without it.
+- *Disable Radix's scroll lock (`Dialog.Root`'s internals don't expose this directly without dropping to lower-level primitives) or replace Dialog-family components.* Rejected — scroll-locking behind a modal is correct, expected behaviour (spec-adjacent UX baseline), and Radix is an explicit stack requirement; the nonce fix is a two-line, non-invasive change instead.
+
+**How to apply:** Any future Radix (or other) primitive that injects DOM nodes should be checked the same way before being trusted under this CSP — open it in a real browser (or Playwright) with a `securitypolicyviolation` listener attached, not just eyeballed. If a library's injected element doesn't support nonces, that's a real blocker requiring either a different library or an explicit, documented, scoped CSP exception — never a blanket `unsafe-inline`.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: Counter's three-column layout only mounts one Basket at a time, keyed off the spec's own ≥1280px threshold
+
+**Decision:** `lib/use-media-query.ts`'s `useIsDesktopBasket()` checks `(min-width: 1280px)` — spec D.4's literal "three columns on desktop (≥1280px)" — and `components/counter/Counter.tsx` conditionally mounts either the inline desktop `<Basket>` column or the mobile bottom-sheet `<Basket>` (bottom bar + Drawer), never both at once.
+
+**Why:** The first implementation mounted both simultaneously, showing/hiding each with Tailwind's `hidden md:block` (768px) — CSS-only visibility, not conditional mounting — which created two real problems, both caught by driving the app with real Playwright automation rather than trusting the code by inspection: (1) two DOM nodes shared the same `aria-label="Basket"` landmark simultaneously (one merely `display:none`, not absent — a genuine duplicate-landmark defect, not just a test-locator inconvenience), and (2) at exactly 768px width the fixed 420px basket column plus the category rail left the product grid roughly 50px of usable width, which `<main>`'s `overflow-x-hidden` then clipped to invisible — the product tiles were technically in the DOM but had zero effective rendered size. Both problems trace to the same root cause: reserving desktop-column space starting at the wrong breakpoint (768px, tablet) instead of the spec's own stated one (1280px, desktop). Real conditional mounting via `useMediaQuery` (not CSS `hidden`) fixes both at once and is architecturally more honest — there was never a reason to run two live, data-fetching copies of the same stateful basket simultaneously.
+
+**How to apply:** Any future screen with a similar "column on desktop, sheet on mobile" pattern should use real conditional mounting (a media-query hook) rather than CSS-only `hidden`/`block` toggling, specifically because duplicate ARIA landmarks and viewport-squeeze layout bugs are easy to miss by code review alone and only reliably surface under real browser automation at the actual breakpoint boundary.
+
+---
+
+## 2026-08-20 — Phase 1 frontend: `Money`'s `emphasis` prop, `forwards` on three animations, and a `text-white/70` contrast fix
+
+**Decision:** Three small, real fixes to Phase 0 design-system code, all found via genuine browser/axe verification while building Phase 1 screens, not by inspection:
+1. `components/design/Money.tsx` gained an optional `emphasis?: "in" | "out" | "watch"` prop that forces the figure's colour independent of sign — needed for D.4's "shows the customer's outstanding balance inline... in `--out`," which is a *positive* receivable amount that still needs to read as a warning, not a negative one (which would incorrectly add a leading minus per B.3's rule).
+2. `components/design/Qty.tsx`'s dark-surface unit suffix (e.g. "items" in the Tally Rail's "Low stock" figure) changed from `text-white/60` to `text-white/70` — axe measured 4.18:1 against `--steel`, under WCAG AA's 4.5:1 floor for normal text; `white/70` computes to ~6.9:1.
+3. `tailwind.config.ts`'s `count-up`/`drawer-slide-in`/`row-fade-in` animations gained `forwards` (matching `shutter-raise`/`-lower`/`-fade`, which already had it) — explicit fill-mode rather than relying on the "to" keyframe coincidentally matching each element's un-animated resting style.
+
+**Why:** Same standard as everything else in this file — a real axe scan on the Stock Room screen (where the Tally Rail's "Low stock" figure is live) is what caught #2, not a design review; #1 and #3 were found while building/testing the Counter and Close-the-Shop flows respectively.
+
+**How to apply:** Any future screen needing to force a `Money` figure's colour independent of its sign should use `emphasis`, never fake it with a wrapping `className` (the figure's own inner span sets its colour directly, so an outer wrapper class doesn't reach it — confirmed the hard way).
+
+---
+
+## 2026-08-20 — Phase 1 frontend: known, accepted risk — `exceljs`'s pinned `uuid@8.3.2` (moderate, GHSA-w5hq-g745-h8pq)
+
+**Not a decision — a flagged, tracked risk**, same pattern as this file's existing Next.js 14.2.35 CSP-nonce entry. `exceljs@4.4.0` (added for the D.2 Step 3 XLSX importer) pins `uuid@^8.3.0`, which resolves to `8.3.2` — flagged by `npm audit` as moderate severity (missing buffer bounds check in `uuid`'s v3/v5/v6 functions "when `buf` is provided"). No newer `exceljs` release exists that depends on a patched `uuid`.
+
+**Why not fixed immediately:** An `npm overrides` pin to `uuid@^11.1.1` was tried and did not take — `npm install`, `npm install --force`, and removing the resolved `uuid` directory and reinstalling all left `exceljs` resolving `uuid@8.3.2` regardless (worth a fresh look with more time; not chased further here). A full `package-lock.json` regeneration was the next lever available, but this workspace's lockfile is shared with the backend agent's concurrent work in the same worktree, disk space in this sandbox was observed at 0 bytes free at least once during this session (see this file's Phase 1 backend `pgserver`-cleanup entry), and the vulnerable code path (`buf`-provided v3/v5/v6 UUID generation) is very unlikely to be reachable from this app's actual usage — `apps/web` only ever calls `workbook.xlsx.load(buffer)` to *read* a tenant-uploaded product list, never constructs or writes a workbook, and `exceljs`'s own use of `uuid` is plausibly confined to write-path features (defined names, styles) this app never exercises. Given that risk profile, forcing a same-session lockfile fight over a shared, disk-constrained worktree was judged the wrong trade against a moderate, likely-unreachable finding.
+
+**How to apply:** Before shipping this importer anywhere real, re-attempt the `uuid` override (or an `exceljs` upgrade, if one ships) on a clean checkout with normal disk headroom, and confirm which `exceljs` code path actually invokes `uuid` — if it *is* reachable from `.load()`, this becomes a must-fix, not an accepted risk. `npm audit --omit=dev` is the one-line check.

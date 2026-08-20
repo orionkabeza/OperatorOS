@@ -2,10 +2,28 @@
 
 import { useEffect, useState } from "react";
 import { useDemoAuthStore } from "@/lib/demo-auth-store";
+import { useTillSession } from "@/lib/queries/till";
+import { useTillUiStore } from "@/lib/stores/till-ui-store";
+import type { DaySession } from "@/lib/api/types";
+
+function elapsedSince(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const hours = Math.floor(ms / 3_600_000);
+  const minutes = Math.floor((ms % 3_600_000) / 60_000);
+  return `${hours}h ${minutes}m`;
+}
 
 /** C.2 — top nav: business + location switcher, global search / ⌘K, day status, notifications, avatar. */
-export function TopNav({ businessName = "Kigali Hardware Supplies" }: { businessName?: string }) {
+export function TopNav({
+  businessName = "Kigali Hardware Supplies",
+  dayStatus,
+}: {
+  businessName?: string;
+  dayStatus?: DaySession | undefined;
+}) {
   const signOut = useDemoAuthStore((s) => s.signOut);
+  const { data: tillSession } = useTillSession();
+  const requestCloseTill = useTillUiStore((s) => s.requestClose);
   const [cmdOpen, setCmdOpen] = useState(false);
 
   useEffect(() => {
@@ -47,9 +65,20 @@ export function TopNav({ businessName = "Kigali Hardware Supplies" }: { business
 
       <div className="flex shrink-0 items-center gap-16">
         <span className="hidden items-center gap-8 text-meta text-white/70 sm:flex">
-          <span aria-hidden className="h-8 w-8 rounded-full bg-in" />
-          Shop open
+          <span aria-hidden className={`h-8 w-8 rounded-full ${dayStatus?.status === "open" ? "bg-in" : "bg-out"}`} />
+          {dayStatus?.status === "open" && dayStatus.openedAt
+            ? `Shop open — ${elapsedSince(dayStatus.openedAt)}`
+            : "Shop closed"}
         </span>
+        {tillSession ? (
+          <button
+            type="button"
+            onClick={requestCloseTill}
+            className="hidden rounded border border-white/20 px-8 py-4 text-meta text-white/70 hover:border-white/40 hover:text-white sm:block"
+          >
+            Close my till
+          </button>
+        ) : null}
         <button type="button" aria-label="Notifications" className="text-white/70 hover:text-white">
           🔔
         </button>

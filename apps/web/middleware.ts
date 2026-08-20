@@ -13,8 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
  * at build time. Every component must reach the page through Tailwind
  * classes, never inline `style={{...}}` or `dangerouslySetInnerHTML` in
  * *our own* code — that discipline keeps `script-src` free of
- * `unsafe-inline` entirely, and keeps `style-src-elem` (actual
- * `<style>`/`<link>` tags) locked to `'self'` with no exception at all.
+ * `unsafe-inline` entirely.
  *
  * `style-src-attr 'unsafe-inline'` below is a narrow, deliberate exception —
  * not the same as a blanket `style-src 'unsafe-inline'`. It exists because
@@ -26,12 +25,28 @@ import { NextRequest, NextResponse } from "next/server";
  * this: an attacker who can inject `style=""` onto an existing element can
  * cause visual mischief but not script execution — a categorically smaller
  * risk than inline `<style>`/`<script>`. See docs/DECISIONS.md.
+ *
+ * `style-src-elem 'nonce-${nonce}'` (Phase 1 addition) is the *same*
+ * per-request secret nonce used for `script-src`, not `unsafe-inline` —
+ * every Radix Dialog/DropdownMenu/Popover-family primitive depends on
+ * `react-remove-scroll` for body scroll-locking, which injects a real
+ * `<style>` element via `react-style-singleton` to hide the scrollbar and
+ * compensate its width. That library already supports CSP nonces
+ * (`get-nonce`'s `setNonce()`, wired in `app/providers.tsx`) — the nonce
+ * requirement means an attacker still can't inject an arbitrary
+ * `<style>` tag without knowing the per-request secret, so this keeps the
+ * "no unsafe-inline anywhere" property while accommodating a real,
+ * necessary runtime style injection. Found as a genuine, previously-latent
+ * bug via a `securitypolicyviolation` listener (see docs/DECISIONS.md) —
+ * every Radix Dialog since Phase 0 was already doing this; no test had
+ * asserted zero console errors after actually opening one until Phase 1's
+ * Counter e2e suite did.
  */
 function buildCsp(nonce: string): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-    "style-src-elem 'self'",
+    `style-src-elem 'self' 'nonce-${nonce}'`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",

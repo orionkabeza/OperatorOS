@@ -79,9 +79,9 @@ export interface Product {
 }
 
 export interface ProductFilters {
-  search?: string;
-  categoryId?: string;
-  quickFilter?: "low-stock" | "out-of-stock" | "negative-stock" | "expiring-30d" | "no-movement-90d" | "below-cost";
+  search?: string | undefined;
+  categoryId?: string | undefined;
+  quickFilter?: "low-stock" | "out-of-stock" | "negative-stock" | "expiring-30d" | "no-movement-90d" | "below-cost" | undefined;
 }
 
 export interface CreateProductInput {
@@ -362,10 +362,10 @@ export interface StockMovement {
 }
 
 export interface StockMovementFilters {
-  productId?: string;
-  type?: StockMovementType;
-  from?: string;
-  to?: string;
+  productId?: string | undefined;
+  type?: StockMovementType | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
 }
 
 export interface AdjustStockInput {
