@@ -205,6 +205,61 @@ async def test_concurrent_double_submit_with_same_idempotency_key_sells_exactly_
 
 
 @pytest.mark.asyncio
+async def test_concurrent_sales_for_the_last_unit_do_not_oversell(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
+    """Two genuinely independent sales (different Idempotency-Keys, as two
+    different cashiers ringing up the same last item at the same instant
+    would send) racing for the same single unit of stock. Unlike the
+    double-submit tests above, this isn't a retried request -- it's two
+    real requests that both see "1 available" if the stock check reads
+    without a lock. Regression test for the race the `FOR UPDATE` +
+    stable-ordering fix in api/routers/sales.py::_check_stock closes:
+    without it, both requests can pass the check and the second one to
+    apply its projection decrement drives `on_hand` negative silently,
+    with no override recorded anywhere."""
+    headers = await auth_headers(client, tenant_a)
+    await _open_day(client, headers, tenant_a)
+    product_id = await _create_product(client, headers, tenant_a, selling_price_minor=100000)
+    await _receive_stock(client, headers, tenant_a, product_id, "1.0000")
+
+    body = {
+        "location_id": tenant_a.location.id,
+        "lines": [{"product_id": product_id, "quantity": "1.0000"}],
+        "payments": [{"method": "cash", "amount_minor": 118000}],
+    }
+
+    async def fire(idem_key: str):
+        return await client.post(
+            "/api/v1/sales", headers={**headers, "Idempotency-Key": idem_key}, json=body
+        )
+
+    resp1, resp2 = await asyncio.gather(
+        fire(f"sale-race-a-{uuid.uuid4().hex}"), fire(f"sale-race-b-{uuid.uuid4().hex}")
+    )
+
+    statuses = sorted([resp1.status_code, resp2.status_code])
+    assert statuses == [201, 422], (
+        "exactly one of the two concurrent sales must succeed and the other must be "
+        f"cleanly rejected for insufficient stock, got {resp1.status_code} and {resp2.status_code}"
+    )
+
+    async with tenant_scoped_session(tenant_a.business.id) as session:
+        sales_result = await session.execute(
+            select(Sale).where(
+                Sale.business_id == tenant_a.business.id, Sale.id != tenant_a.sale_id
+            )
+        )
+        assert len(sales_result.all()) == 1, "exactly one sale must have been recorded"
+
+        stock_result = await session.execute(
+            select(ProductLocation).where(ProductLocation.product_id == product_id)
+        )
+        on_hand = stock_result.scalar_one().on_hand
+        assert on_hand == 0, f"stock must land at exactly 0, not go negative -- got {on_hand}"
+
+
+@pytest.mark.asyncio
 async def test_sequential_replay_with_same_key_does_not_double_sell(
     client: AsyncClient, tenant_a: SeededTenant
 ) -> None:

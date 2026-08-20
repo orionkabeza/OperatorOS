@@ -200,12 +200,28 @@ async def _price_lines(
 async def _check_stock(
     ctx: RequestContext, location_id: str, priced: list[_PricedLine], allow_negative: bool
 ) -> None:
-    for line in priced:
+    # `FOR UPDATE`, and lines processed in a stable product_id order: this
+    # check and the eventual `product_stock` projection decrement
+    # (projections/product_stock.py::_get_or_create_locked, also
+    # `FOR UPDATE`) run inside the same request transaction
+    # (db.py::tenant_scoped_session wraps the whole request in one
+    # `session.begin()`). Without the lock here, two concurrent sales for
+    # the last unit of the same product could both read "1 available",
+    # both pass this check, and the second one to reach the projection
+    # would apply its decrement on top of the first's already-zeroed row --
+    # silently going negative with no override recorded. Locking here
+    # closes that window: the second transaction blocks until the first
+    # commits, then re-reads the now-current (zero) balance and correctly
+    # fails. The stable ordering avoids two multi-line sales deadlocking
+    # each other by acquiring the same two rows in opposite order.
+    for line in sorted(priced, key=lambda line_: line_.product_id):
         result = await ctx.session.execute(
-            select(ProductLocation).where(
+            select(ProductLocation)
+            .where(
                 ProductLocation.location_id == location_id,
                 ProductLocation.product_id == line.product_id,
             )
+            .with_for_update()
         )
         row = result.scalar_one_or_none()
         if await is_frozen_for_stocktake(ctx.session, location_id, line.product_id):
