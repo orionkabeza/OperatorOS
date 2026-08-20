@@ -42,7 +42,7 @@ export default function PayLinkPage() {
           </div>
         ) : status === "paid" ? (
           <div className="flex flex-col items-center gap-8 text-center">
-            <p className="type-expanded font-display text-card-title font-bold text-in">Payment received</p>
+            <p className="type-expanded font-display text-card-title font-bold text-ink">Payment received</p>
             <Money amount={link.amountMinor} size="screen-title" />
             <p className="text-body text-ink-soft">Thank you, {link.customerName}. {link.businessName} has been notified.</p>
           </div>
