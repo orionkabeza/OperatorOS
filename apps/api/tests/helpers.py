@@ -21,7 +21,9 @@ async def login_as(client: AsyncClient, tenant: SeededTenant, device_id: str | N
     return resp.json()
 
 
-async def auth_headers(client: AsyncClient, tenant: SeededTenant, device_id: str | None = None) -> dict:
+async def auth_headers(
+    client: AsyncClient, tenant: SeededTenant, device_id: str | None = None
+) -> dict:
     tokens = await login_as(client, tenant, device_id)
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 

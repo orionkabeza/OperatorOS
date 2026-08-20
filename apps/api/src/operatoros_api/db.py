@@ -24,7 +24,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from operatoros_api.config import get_settings
 
@@ -44,9 +49,7 @@ def get_engine(database_url: str | None = None) -> AsyncEngine:
 def get_session_factory(database_url: str | None = None) -> async_sessionmaker[AsyncSession]:
     global _session_factory
     if _session_factory is None:
-        _session_factory = async_sessionmaker(
-            bind=get_engine(database_url), expire_on_commit=False
-        )
+        _session_factory = async_sessionmaker(bind=get_engine(database_url), expire_on_commit=False)
     return _session_factory
 
 
@@ -76,7 +79,6 @@ async def tenant_scoped_session(
     business_id: str | None, location_ids: list[str] | None = None
 ) -> AsyncIterator[AsyncSession]:
     factory = get_session_factory()
-    async with factory() as session:
-        async with session.begin():
-            await _set_tenant_guc(session, business_id, location_ids)
-            yield session
+    async with factory() as session, session.begin():
+        await _set_tenant_guc(session, business_id, location_ids)
+        yield session

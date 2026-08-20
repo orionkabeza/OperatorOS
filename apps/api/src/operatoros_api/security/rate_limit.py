@@ -42,7 +42,9 @@ class LockoutTracker:
     def _key(self, business_id: str, identifier_hash: str, device_id: str) -> str:
         return f"lockout:{business_id}:{identifier_hash}:{device_id}"
 
-    async def is_locked(self, business_id: str, identifier_hash: str, device_id: str) -> tuple[bool, int]:
+    async def is_locked(
+        self, business_id: str, identifier_hash: str, device_id: str
+    ) -> tuple[bool, int]:
         key = self._key(business_id, identifier_hash, device_id)
         raw = await self.redis.get(key)
         if raw is None:

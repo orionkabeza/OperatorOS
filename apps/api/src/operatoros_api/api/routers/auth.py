@@ -21,7 +21,13 @@ from operatoros_api.audit_log import append_audit_log
 from operatoros_api.capabilities import ROLES_REQUIRING_2FA
 from operatoros_api.config import get_settings
 from operatoros_api.db import tenant_scoped_session
-from operatoros_api.models.tenancy import DeviceSession, LoginAttempt, RefreshToken, User, UserLocation
+from operatoros_api.models.tenancy import (
+    DeviceSession,
+    LoginAttempt,
+    RefreshToken,
+    User,
+    UserLocation,
+)
 from operatoros_api.schemas.auth import (
     LoginRequest,
     LogoutRequest,
@@ -142,8 +148,10 @@ async def login(
         )
         user = result.scalar_one_or_none()
 
-        secret_ok = verify_secret(body.secret, user.secret_hash) if user else verify_secret(
-            body.secret, _DUMMY_SECRET_HASH
+        secret_ok = (
+            verify_secret(body.secret, user.secret_hash)
+            if user
+            else verify_secret(body.secret, _DUMMY_SECRET_HASH)
         )
 
         session.add(
@@ -162,8 +170,11 @@ async def login(
         if user is None or not secret_ok or user.status != "active":
             outcome["ok"] = False
             await append_audit_log(
-                session, business_id=business.id, event_type="LOGIN_FAILED",
-                detail={"identifier_hash": identifier_hash, "reason": "bad_credentials"}, ip=ip,
+                session,
+                business_id=business.id,
+                event_type="LOGIN_FAILED",
+                detail={"identifier_hash": identifier_hash, "reason": "bad_credentials"},
+                ip=ip,
             )
         elif user.role.key in ROLES_REQUIRING_2FA and user.totp_enabled:
             # Credentials check out, but 2FA hasn't been completed yet --
@@ -185,8 +196,12 @@ async def login(
             )
             outcome["tokens"] = tokens
             await append_audit_log(
-                session, business_id=business.id, event_type="LOGIN_SUCCEEDED",
-                actor_user_id=user.id, detail={"device_id": body.device_id}, ip=ip,
+                session,
+                business_id=business.id,
+                event_type="LOGIN_SUCCEEDED",
+                actor_user_id=user.id,
+                detail={"device_id": body.device_id},
+                ip=ip,
             )
 
     # `async with tenant_scoped_session` has committed by now -- the
@@ -203,7 +218,16 @@ async def login(
 
     if outcome.get("totp_required"):
         challenge = create_totp_challenge_token(outcome["user_id"], business.id, body.device_id)
-        return TokenPair(access_token="", refresh_token="", totp_required=True, challenge_token=challenge)
+        # Empty placeholders, not credentials -- no real token is issued
+        # until the second factor is verified. bandit's hardcoded-password
+        # heuristic matches on the field names alone; nosec is scoped to
+        # this exact line, not the rule globally.
+        return TokenPair(
+            access_token="",  # nosec B106
+            refresh_token="",  # nosec B106
+            totp_required=True,
+            challenge_token=challenge,
+        )
 
     return outcome["tokens"]
 
@@ -221,10 +245,10 @@ async def totp_verify(body: TotpVerifyRequest) -> TokenPair:
         code_ok = (
             user is not None
             and user.totp_enabled
-            and bool(user.totp_secret_encrypted)
+            and user.totp_secret_encrypted is not None
             and verify_totp_code(decrypt_secret(user.totp_secret_encrypted), body.code)
         )
-        if code_ok:
+        if code_ok and user is not None:
             result_tokens = await _issue_session_tokens(
                 session,
                 business_id=challenge.business_id,
@@ -233,12 +257,17 @@ async def totp_verify(body: TotpVerifyRequest) -> TokenPair:
                 remember_device=False,
             )
             await append_audit_log(
-                session, business_id=challenge.business_id, event_type="LOGIN_SUCCEEDED",
-                actor_user_id=user.id, detail={"device_id": challenge.device_id, "via": "totp"},
+                session,
+                business_id=challenge.business_id,
+                event_type="LOGIN_SUCCEEDED",
+                actor_user_id=user.id,
+                detail={"device_id": challenge.device_id, "via": "totp"},
             )
         else:
             await append_audit_log(
-                session, business_id=challenge.business_id, event_type="LOGIN_FAILED",
+                session,
+                business_id=challenge.business_id,
+                event_type="LOGIN_FAILED",
                 actor_user_id=challenge.user_id,
                 detail={"device_id": challenge.device_id, "reason": "bad_totp_code"},
             )
@@ -278,7 +307,12 @@ async def refresh(body: RefreshRequest) -> TokenPair:
 
     if error is not None:
         raise HTTPException(status_code=401, detail="Session invalidated. Please sign in again.")
-    assert new_tokens is not None
+    if new_tokens is None:
+        # Unreachable in practice (the only paths through the block above
+        # set either `error` or `new_tokens`), but an explicit raise here
+        # -- rather than `assert` -- survives running under `python -O`,
+        # where asserts are silently stripped (bandit B101).
+        raise RuntimeError("refresh() produced neither an error nor a token pair")
     return new_tokens
 
 

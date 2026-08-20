@@ -46,7 +46,9 @@ async def test_unknown_identifier_and_wrong_secret_give_identical_response(
 
 
 @pytest.mark.asyncio
-async def test_lockout_after_max_failed_attempts(client: AsyncClient, tenant_a: SeededTenant) -> None:
+async def test_lockout_after_max_failed_attempts(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
     device = f"device-{uuid.uuid4().hex[:8]}"
     body = {
         "business_slug": tenant_a.business.slug,
@@ -152,7 +154,9 @@ async def test_totp_challenge_then_verify_issues_real_tokens(
 
 
 @pytest.mark.asyncio
-async def test_request_bodies_reject_unknown_fields(client: AsyncClient, tenant_a: SeededTenant) -> None:
+async def test_request_bodies_reject_unknown_fields(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
     resp = await client.post(
         "/api/v1/auth/login",
         json={

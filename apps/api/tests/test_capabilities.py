@@ -36,12 +36,18 @@ async def test_owner_role_bundle_has_every_capability(tenant_a: SeededTenant) ->
 async def test_cashier_role_bundle_cannot_view_cost(tenant_a: SeededTenant) -> None:
     async with tenant_scoped_session(tenant_a.business.id) as session:
         cashier = await create_user(
-            session, business_id=tenant_a.business.id, role=tenant_a.roles["cashier"],
-            display_name="Cashier", secret="713245", phone="+250788000111",
+            session,
+            business_id=tenant_a.business.id,
+            role=tenant_a.roles["cashier"],
+            display_name="Cashier",
+            secret="713245",
+            phone="+250788000111",
             location_ids=[tenant_a.location.id],
         )
         caps = await resolve_effective_capabilities(
-            session, user_id=cashier.id, role_key="cashier",
+            session,
+            user_id=cashier.id,
+            role_key="cashier",
             assigned_location_ids=[tenant_a.location.id],
         )
     assert caps.has("sale.create", None)
@@ -50,7 +56,9 @@ async def test_cashier_role_bundle_cannot_view_cost(tenant_a: SeededTenant) -> N
 
 
 @pytest.mark.asyncio
-async def test_per_user_grant_adds_a_capability_the_role_does_not_have(tenant_a: SeededTenant) -> None:
+async def test_per_user_grant_adds_a_capability_the_role_does_not_have(
+    tenant_a: SeededTenant,
+) -> None:
     async with tenant_scoped_session(tenant_a.business.id) as session:
         session.add(
             UserGrant(
@@ -63,14 +71,18 @@ async def test_per_user_grant_adds_a_capability_the_role_does_not_have(tenant_a:
         )
         await session.flush()
         caps = await resolve_effective_capabilities(
-            session, user_id=tenant_a.owner.id, role_key="cashier",
+            session,
+            user_id=tenant_a.owner.id,
+            role_key="cashier",
             assigned_location_ids=[tenant_a.location.id],
         )
     assert caps.has("product.view_cost", None)
 
 
 @pytest.mark.asyncio
-async def test_per_user_revoke_removes_a_capability_the_role_bundle_grants(tenant_a: SeededTenant) -> None:
+async def test_per_user_revoke_removes_a_capability_the_role_bundle_grants(
+    tenant_a: SeededTenant,
+) -> None:
     async with tenant_scoped_session(tenant_a.business.id) as session:
         session.add(
             UserGrant(
@@ -83,7 +95,9 @@ async def test_per_user_revoke_removes_a_capability_the_role_bundle_grants(tenan
         )
         await session.flush()
         caps = await resolve_effective_capabilities(
-            session, user_id=tenant_a.owner.id, role_key="owner",
+            session,
+            user_id=tenant_a.owner.id,
+            role_key="owner",
             assigned_location_ids=[tenant_a.location.id],
         )
     assert not caps.has("debt.write_off", None)
@@ -96,8 +110,12 @@ async def test_location_scoped_grant_only_applies_at_that_location(tenant_a: See
     other_location_id = "not-a-real-location-id"
     async with tenant_scoped_session(tenant_a.business.id) as session:
         storekeeper = await create_user(
-            session, business_id=tenant_a.business.id, role=tenant_a.roles["storekeeper"],
-            display_name="Storekeeper", secret="825190", phone="+250788000222",
+            session,
+            business_id=tenant_a.business.id,
+            role=tenant_a.roles["storekeeper"],
+            display_name="Storekeeper",
+            secret="825190",
+            phone="+250788000222",
             location_ids=[tenant_a.location.id],
         )
         session.add(
@@ -111,7 +129,9 @@ async def test_location_scoped_grant_only_applies_at_that_location(tenant_a: See
         )
         await session.flush()
         caps = await resolve_effective_capabilities(
-            session, user_id=storekeeper.id, role_key="storekeeper",
+            session,
+            user_id=storekeeper.id,
+            role_key="storekeeper",
             assigned_location_ids=[tenant_a.location.id, other_location_id],
         )
     assert caps.has("sale.create", tenant_a.location.id)

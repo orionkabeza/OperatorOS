@@ -31,7 +31,9 @@ async def _balance(tenant: SeededTenant, account_key: str) -> int:
 
 
 @pytest.mark.asyncio
-async def test_projection_reflects_the_event_in_the_same_transaction(tenant_a: SeededTenant) -> None:
+async def test_projection_reflects_the_event_in_the_same_transaction(
+    tenant_a: SeededTenant,
+) -> None:
     before = await _balance(tenant_a, "till")
 
     async with tenant_scoped_session(tenant_a.business.id) as session:

@@ -57,7 +57,9 @@ async def _inject_drift(tenant: SeededTenant, delta_minor: int) -> None:
 
 
 @pytest.mark.asyncio
-async def test_audit_passes_clean_when_projection_matches_the_ledger(tenant_a: SeededTenant) -> None:
+async def test_audit_passes_clean_when_projection_matches_the_ledger(
+    tenant_a: SeededTenant,
+) -> None:
     async with tenant_scoped_session(tenant_a.business.id) as session:
         await append_event(
             session,
@@ -145,5 +147,7 @@ async def test_audit_task_subprocess_exits_nonzero_on_drift(
         text=True,
         timeout=60,
     )
-    assert result.returncode != 0, f"expected the task to fail; stdout={result.stdout} stderr={result.stderr}"
+    assert (
+        result.returncode != 0
+    ), f"expected the task to fail; stdout={result.stdout} stderr={result.stderr}"
     assert "ProjectionDrift" in result.stderr, result.stderr

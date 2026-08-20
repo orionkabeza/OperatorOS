@@ -91,15 +91,28 @@ async def append_audit_log(
     seq = prev_seq + 1
     detail = detail or {}
     entry_hash = compute_hash(
-        business_id=business_id, seq=seq, event_type=event_type,
-        actor_user_id=actor_user_id, subject_user_id=subject_user_id,
-        detail=detail, ip=ip, occurred_at=occurred_at, prev_hash=prev_hash,
+        business_id=business_id,
+        seq=seq,
+        event_type=event_type,
+        actor_user_id=actor_user_id,
+        subject_user_id=subject_user_id,
+        detail=detail,
+        ip=ip,
+        occurred_at=occurred_at,
+        prev_hash=prev_hash,
     )
     entry = AuditLogEntry(
-        id=uuid7_str(), business_id=business_id, seq=seq, event_type=event_type,
-        actor_user_id=actor_user_id, subject_user_id=subject_user_id,
-        detail=detail, ip=ip, occurred_at=occurred_at,
-        prev_hash=prev_hash, hash=entry_hash,
+        id=uuid7_str(),
+        business_id=business_id,
+        seq=seq,
+        event_type=event_type,
+        actor_user_id=actor_user_id,
+        subject_user_id=subject_user_id,
+        detail=detail,
+        ip=ip,
+        occurred_at=occurred_at,
+        prev_hash=prev_hash,
+        hash=entry_hash,
     )
     session.add(entry)
     await session.flush()
@@ -125,17 +138,25 @@ async def verify_chain(session: AsyncSession, *, business_id: str) -> ChainVerif
     for row in rows:
         if row.prev_hash != expected_prev:
             return ChainVerificationResult(
-                ok=False, broken_at_seq=row.seq,
+                ok=False,
+                broken_at_seq=row.seq,
                 reason=f"prev_hash mismatch at seq {row.seq}: chain does not connect",
             )
         recomputed = compute_hash(
-            business_id=row.business_id, seq=row.seq, event_type=row.event_type,
-            actor_user_id=row.actor_user_id, subject_user_id=row.subject_user_id,
-            detail=row.detail, ip=row.ip, occurred_at=row.occurred_at, prev_hash=row.prev_hash,
+            business_id=row.business_id,
+            seq=row.seq,
+            event_type=row.event_type,
+            actor_user_id=row.actor_user_id,
+            subject_user_id=row.subject_user_id,
+            detail=row.detail,
+            ip=row.ip,
+            occurred_at=row.occurred_at,
+            prev_hash=row.prev_hash,
         )
         if recomputed != row.hash:
             return ChainVerificationResult(
-                ok=False, broken_at_seq=row.seq,
+                ok=False,
+                broken_at_seq=row.seq,
                 reason=f"hash mismatch at seq {row.seq}: row content was modified after being written",
             )
         expected_prev = row.hash

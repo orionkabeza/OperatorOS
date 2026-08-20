@@ -22,17 +22,17 @@ dependencies = [
     "uuid6>=2024.7.10",
     "python-multipart>=0.0.12",
     "structlog>=24.4,<25.0",
-    "cryptography>=43.0,<44.0",
+    "cryptography>=50.0,<51.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3,<9.0",
-    "pytest-asyncio>=0.24,<1.0",
+    "pytest>=9.0,<10.0",
+    "pytest-asyncio>=1.0,<2.0",
     "pytest-cov>=6.0,<7.0",
     "httpx>=0.27,<1.0",
     "ruff>=0.7,<1.0",
-    "black>=24.10,<25.0",
+    "black>=26.3,<27.0",
     "mypy>=1.13,<2.0",
     "bandit[toml]>=1.7,<2.0",
     "pip-audit>=2.7,<3.0",
@@ -61,7 +61,15 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
-ignore = ["E501"]
+# E501: line length, handled by black.
+# B008: "no function call in argument defaults" -- the standard bugbear
+# rule for mutable-default-argument bugs. FastAPI's dependency injection
+# is built entirely on `param: T = Depends(...)`, evaluated per-request by
+# FastAPI's own introspection, not as a normal Python default value -- the
+# bug B008 warns about does not apply. Ignoring it repo-wide is the
+# accepted pattern for FastAPI projects rather than restructuring every
+# route handler.
+ignore = ["E501", "B008"]
 
 [tool.black]
 line-length = 100

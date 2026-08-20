@@ -58,7 +58,9 @@ async def test_reusing_a_refresh_token_revokes_the_whole_family(
 
 
 @pytest.mark.asyncio
-async def test_refresh_with_unknown_token_is_rejected(client: AsyncClient, tenant_a: SeededTenant) -> None:
+async def test_refresh_with_unknown_token_is_rejected(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
     resp = await client.post(
         "/api/v1/auth/refresh",
         json={"business_id": tenant_a.business.id, "refresh_token": "not-a-real-token"},
@@ -67,7 +69,9 @@ async def test_refresh_with_unknown_token_is_rejected(client: AsyncClient, tenan
 
 
 @pytest.mark.asyncio
-async def test_logout_revokes_the_refresh_token(client: AsyncClient, tenant_a: SeededTenant) -> None:
+async def test_logout_revokes_the_refresh_token(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
     tokens = await login_as(client, tenant_a)
     logout_resp = await client.post(
         "/api/v1/auth/logout",

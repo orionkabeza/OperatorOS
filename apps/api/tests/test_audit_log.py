@@ -26,17 +26,26 @@ from tests.helpers import auth_headers, idempotency_headers
 async def test_chain_verifies_over_a_clean_sequence(tenant_a: SeededTenant) -> None:
     async with tenant_scoped_session(tenant_a.business.id) as session:
         e1 = await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="LOGIN_SUCCEEDED",
-            actor_user_id=tenant_a.owner.id, detail={"device_id": "d1"},
+            session,
+            business_id=tenant_a.business.id,
+            event_type="LOGIN_SUCCEEDED",
+            actor_user_id=tenant_a.owner.id,
+            detail={"device_id": "d1"},
         )
         e2 = await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="ROLE_CHANGED",
-            actor_user_id=tenant_a.owner.id, subject_user_id=tenant_a.owner.id,
+            session,
+            business_id=tenant_a.business.id,
+            event_type="ROLE_CHANGED",
+            actor_user_id=tenant_a.owner.id,
+            subject_user_id=tenant_a.owner.id,
             detail={"old_role_key": "cashier", "new_role_key": "manager"},
         )
         e3 = await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="DATA_EXPORTED",
-            actor_user_id=tenant_a.owner.id, detail={"export_type": "sales_csv", "row_count": 42},
+            session,
+            business_id=tenant_a.business.id,
+            event_type="DATA_EXPORTED",
+            actor_user_id=tenant_a.owner.id,
+            detail={"export_type": "sales_csv", "row_count": 42},
         )
 
     assert e1.seq == 1
@@ -56,17 +65,26 @@ async def test_a_mutated_middle_row_fails_verification(
 ) -> None:
     async with tenant_scoped_session(tenant_a.business.id) as session:
         await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="LOGIN_SUCCEEDED",
-            actor_user_id=tenant_a.owner.id, detail={"device_id": "d1"},
+            session,
+            business_id=tenant_a.business.id,
+            event_type="LOGIN_SUCCEEDED",
+            actor_user_id=tenant_a.owner.id,
+            detail={"device_id": "d1"},
         )
         target = await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="ROLE_CHANGED",
-            actor_user_id=tenant_a.owner.id, subject_user_id=tenant_a.owner.id,
+            session,
+            business_id=tenant_a.business.id,
+            event_type="ROLE_CHANGED",
+            actor_user_id=tenant_a.owner.id,
+            subject_user_id=tenant_a.owner.id,
             detail={"old_role_key": "cashier", "new_role_key": "manager"},
         )
         await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="LOGIN_SUCCEEDED",
-            actor_user_id=tenant_a.owner.id, detail={"device_id": "d2"},
+            session,
+            business_id=tenant_a.business.id,
+            event_type="LOGIN_SUCCEEDED",
+            actor_user_id=tenant_a.owner.id,
+            detail={"device_id": "d2"},
         )
 
     # A direct, out-of-band edit -- deliberately bypassing the app's own
@@ -103,8 +121,11 @@ async def test_operatoros_app_cannot_update_audit_log_rows_at_all(
 
     async with tenant_scoped_session(tenant_a.business.id) as session:
         entry = await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="LOGIN_SUCCEEDED",
-            actor_user_id=tenant_a.owner.id, detail={"device_id": "d1"},
+            session,
+            business_id=tenant_a.business.id,
+            event_type="LOGIN_SUCCEEDED",
+            actor_user_id=tenant_a.owner.id,
+            detail={"device_id": "d1"},
         )
 
     with pytest.raises(DBAPIError):
@@ -176,8 +197,12 @@ async def test_role_change_endpoint_writes_a_role_changed_audit_entry(
 
     async with tenant_scoped_session(tenant_a.business.id) as session:
         target = await create_user(
-            session, business_id=tenant_a.business.id, role=tenant_a.roles["cashier"],
-            display_name="Future Manager", secret="662211", phone="+250788555000",
+            session,
+            business_id=tenant_a.business.id,
+            role=tenant_a.roles["cashier"],
+            display_name="Future Manager",
+            secret="662211",
+            phone="+250788555000",
             location_ids=[tenant_a.location.id],
         )
         target_id = target.id
@@ -235,13 +260,19 @@ async def test_audit_log_chain_is_isolated_per_tenant(
 ) -> None:
     async with tenant_scoped_session(tenant_a.business.id) as session:
         a_entry = await append_audit_log(
-            session, business_id=tenant_a.business.id, event_type="LOGIN_SUCCEEDED",
-            actor_user_id=tenant_a.owner.id, detail={},
+            session,
+            business_id=tenant_a.business.id,
+            event_type="LOGIN_SUCCEEDED",
+            actor_user_id=tenant_a.owner.id,
+            detail={},
         )
     async with tenant_scoped_session(tenant_b.business.id) as session:
         b_entry = await append_audit_log(
-            session, business_id=tenant_b.business.id, event_type="LOGIN_SUCCEEDED",
-            actor_user_id=tenant_b.owner.id, detail={},
+            session,
+            business_id=tenant_b.business.id,
+            event_type="LOGIN_SUCCEEDED",
+            actor_user_id=tenant_b.owner.id,
+            detail={},
         )
 
     # Each tenant's chain starts fresh from GENESIS_HASH -- one tenant's

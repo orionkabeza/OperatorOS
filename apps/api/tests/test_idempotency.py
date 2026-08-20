@@ -69,8 +69,12 @@ async def test_sequential_replay_with_same_key_returns_the_original_response(
         "payload": {"amount_minor": 15000, "category": "Transport", "money_location": "till"},
     }
 
-    first = await client.post("/api/v1/events", headers={**headers, "Idempotency-Key": key}, json=body)
-    second = await client.post("/api/v1/events", headers={**headers, "Idempotency-Key": key}, json=body)
+    first = await client.post(
+        "/api/v1/events", headers={**headers, "Idempotency-Key": key}, json=body
+    )
+    second = await client.post(
+        "/api/v1/events", headers={**headers, "Idempotency-Key": key}, json=body
+    )
 
     assert first.status_code == second.status_code == 201
     assert first.json() == second.json()
@@ -89,10 +93,14 @@ async def test_different_idempotency_keys_are_not_deduplicated(
     }
 
     r1 = await client.post(
-        "/api/v1/events", headers={**headers, "Idempotency-Key": f"k1-{uuid.uuid4().hex}"}, json=body
+        "/api/v1/events",
+        headers={**headers, "Idempotency-Key": f"k1-{uuid.uuid4().hex}"},
+        json=body,
     )
     r2 = await client.post(
-        "/api/v1/events", headers={**headers, "Idempotency-Key": f"k2-{uuid.uuid4().hex}"}, json=body
+        "/api/v1/events",
+        headers={**headers, "Idempotency-Key": f"k2-{uuid.uuid4().hex}"},
+        json=body,
     )
     assert r1.status_code == r2.status_code == 201
     assert r1.json()["id"] != r2.json()["id"]
@@ -128,7 +136,9 @@ async def test_reusing_a_key_with_a_different_body_is_a_conflict(
 
 
 @pytest.mark.asyncio
-async def test_missing_idempotency_key_is_rejected(client: AsyncClient, tenant_a: SeededTenant) -> None:
+async def test_missing_idempotency_key_is_rejected(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
     headers = await auth_headers(client, tenant_a)
     resp = await client.post(
         "/api/v1/events",

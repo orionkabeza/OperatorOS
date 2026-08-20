@@ -40,7 +40,9 @@ async def test_append_valid_event_via_http(client: AsyncClient, tenant_a: Seeded
 
 
 @pytest.mark.asyncio
-async def test_append_unknown_event_type_is_rejected(client: AsyncClient, tenant_a: SeededTenant) -> None:
+async def test_append_unknown_event_type_is_rejected(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
     headers = await auth_headers(client, tenant_a)
     resp = await client.post(
         "/api/v1/events",
@@ -68,7 +70,9 @@ async def test_append_payload_missing_required_field_is_rejected(
 
 
 @pytest.mark.asyncio
-async def test_append_payload_extra_field_is_rejected(client: AsyncClient, tenant_a: SeededTenant) -> None:
+async def test_append_payload_extra_field_is_rejected(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
     headers = await auth_headers(client, tenant_a)
     resp = await client.post(
         "/api/v1/events",

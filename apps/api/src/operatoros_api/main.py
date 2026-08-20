@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from redis import asyncio as redis_asyncio
 
@@ -31,19 +32,21 @@ def create_app(redis_client: Any = None) -> FastAPI:
     app = FastAPI(title="OperatorOS API", version="0.1.0")
 
     settings = get_settings()
-    app.state.redis = redis_client or redis_asyncio.from_url(settings.redis_url, decode_responses=True)
+    app.state.redis = redis_client or redis_asyncio.from_url(
+        settings.redis_url, decode_responses=True
+    )
 
     @app.middleware("http")
-    async def correlation_and_logging(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def correlation_and_logging(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         correlation_id = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
         start = time.monotonic()
         structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
         try:
             response = await call_next(request)
         except Exception:
-            logger.exception(
-                "unhandled_exception", path=request.url.path, method=request.method
-            )
+            logger.exception("unhandled_exception", path=request.url.path, method=request.method)
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Something went wrong on our end. Please try again."},

@@ -30,7 +30,12 @@ from sqlalchemy import create_engine, text
 import operatoros_api.db as db_module
 from operatoros_api.main import create_app
 from operatoros_api.models.tenancy import Business, Location, Role, User
-from operatoros_api.seed import create_business, create_location, create_user, seed_default_roles_and_permissions
+from operatoros_api.seed import (
+    create_business,
+    create_location,
+    create_user,
+    seed_default_roles_and_permissions,
+)
 
 APPS_API_DIR = Path(__file__).resolve().parents[1]
 TEST_APP_PASSWORD = "operatoros_app_test_pw"
@@ -145,8 +150,12 @@ async def make_tenant(label: str) -> SeededTenant:
         )
 
     return SeededTenant(
-        business=business, location=location, roles=roles,
-        owner=owner, owner_phone=phone, owner_secret=secret,
+        business=business,
+        location=location,
+        roles=roles,
+        owner=owner,
+        owner_phone=phone,
+        owner_secret=secret,
     )
 
 

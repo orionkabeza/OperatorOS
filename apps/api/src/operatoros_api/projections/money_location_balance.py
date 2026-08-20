@@ -91,7 +91,9 @@ def recompute_from_events(events: list[Event]) -> dict[tuple[str, str, str], int
             continue
         if event.type == "MONEY_TRANSFERRED":
             amount = int(event.payload["amount_minor"])
-            _bump(event.business_id, event.location_id, event.payload["from_money_location"], -amount)
+            _bump(
+                event.business_id, event.location_id, event.payload["from_money_location"], -amount
+            )
             _bump(event.business_id, event.location_id, event.payload["to_money_location"], amount)
         elif event.type == "EXPENSE_RECORDED":
             amount = int(event.payload["amount_minor"])

@@ -33,6 +33,7 @@ class EventPayload(BaseModel):
 
 # --- Day / till -------------------------------------------------------
 
+
 class DayOpenedPayload(EventPayload):
     counted_amount_minor: int
     expected_amount_minor: int
@@ -62,6 +63,7 @@ class TillSessionClosedPayload(EventPayload):
 
 
 # --- Sales / quotes / returns ------------------------------------------
+
 
 class SaleLineInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -119,6 +121,7 @@ class ReturnRecordedPayload(EventPayload):
 
 # --- Stock ---------------------------------------------------------------
 
+
 class StockReceivedPayload(EventPayload):
     product_id: str
     location_id: str
@@ -174,6 +177,7 @@ class StocktakePostedPayload(EventPayload):
 
 # --- Money ---------------------------------------------------------------
 
+
 class PaymentReceivedPayload(EventPayload):
     customer_id: str | None = None
     supplier_id: str | None = None
@@ -215,6 +219,7 @@ class MomoTransactionMatchedPayload(EventPayload):
 
 # --- Customers / debt ------------------------------------------------------
 
+
 class CustomerCreatedPayload(EventPayload):
     customer_id: str
     name: str
@@ -243,6 +248,7 @@ class ReminderSentPayload(EventPayload):
 
 # --- Suppliers -------------------------------------------------------------
 
+
 class PoCreatedPayload(EventPayload):
     po_id: str
     supplier_id: str
@@ -269,6 +275,7 @@ class SupplierInvoiceRecordedPayload(EventPayload):
 
 # --- Products ----------------------------------------------------------
 
+
 class PriceChangedPayload(EventPayload):
     product_id: str
     old_price_minor: int
@@ -287,6 +294,7 @@ class ProductArchivedPayload(EventPayload):
 
 
 # --- Users / audit-adjacent ---------------------------------------------
+
 
 class UserInvitedPayload(EventPayload):
     invited_user_id: str

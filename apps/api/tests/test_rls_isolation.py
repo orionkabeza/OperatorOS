@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 
 import operatoros_api.db as db_module
 from operatoros_api.models.tenancy import Location
@@ -60,5 +61,5 @@ async def test_rls_with_check_blocks_writing_a_row_tagged_for_another_tenant(
     async with db_module.tenant_scoped_session(tenant_a.business.id) as session:
         sneaky = Location(business_id=tenant_b.business.id, name="should never land")
         session.add(sneaky)
-        with pytest.raises(Exception):
+        with pytest.raises(DBAPIError):
             await session.flush()

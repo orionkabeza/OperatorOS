@@ -10,38 +10,67 @@ by tests/test_cross_tenant_isolation.py and tests/test_idempotency.py.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 
-from operatoros_api.api.deps import RequestContext, get_current_context, idempotency_key_header, require_capability
+from operatoros_api.api.deps import (
+    RequestContext,
+    get_current_context,
+    idempotency_key_header,
+    require_capability,
+)
 from operatoros_api.audit_log import append_audit_log
-from operatoros_api.idempotency_service import claim_or_replay, complete, fingerprint_request, get_existing
+from operatoros_api.idempotency_service import (
+    claim_or_replay,
+    complete,
+    fingerprint_request,
+    get_existing,
+)
 from operatoros_api.models.tenancy import Role, User, UserGrant, UserLocation
-from operatoros_api.schemas.users import GrantRequest, MeOut, RoleChangeRequest, UserCreateRequest, UserOut
+from operatoros_api.schemas.users import (
+    GrantRequest,
+    MeOut,
+    RoleChangeRequest,
+    UserCreateRequest,
+    UserOut,
+)
 from operatoros_api.security.identifiers import hash_identifier
 from operatoros_api.security.passwords import hash_secret
-from sqlalchemy import select
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 
 def _to_user_out(user: User, role_key: str) -> UserOut:
     return UserOut(
-        id=user.id, display_name=user.display_name, phone=user.phone,
-        email=user.email, role_key=role_key, status=user.status,
+        id=user.id,
+        display_name=user.display_name,
+        phone=user.phone,
+        email=user.email,
+        role_key=role_key,
+        status=user.status,
     )
 
 
 @router.get("/me", response_model=MeOut)
 async def get_me(ctx: RequestContext = Depends(get_current_context)) -> MeOut:
     user = await ctx.session.get(User, ctx.user_id)
-    assert user is not None
+    if user is None:
+        # get_current_context just loaded this exact row moments earlier in
+        # the same transaction -- unreachable in practice. An explicit
+        # raise, not `assert` (bandit B101: stripped under `python -O`).
+        raise RuntimeError("authenticated user row disappeared mid-request")
     return MeOut(
-        id=ctx.user_id, business_id=ctx.business_id, display_name=user.display_name,
-        role_key=ctx.role_key, location_ids=ctx.location_ids,
+        id=ctx.user_id,
+        business_id=ctx.business_id,
+        display_name=user.display_name,
+        role_key=ctx.role_key,
+        location_ids=ctx.location_ids,
     )
 
 
 @router.get("", response_model=list[UserOut])
-async def list_users(ctx: RequestContext = Depends(require_capability("user.manage"))) -> list[UserOut]:
+async def list_users(
+    ctx: RequestContext = Depends(require_capability("user.manage")),
+) -> list[UserOut]:
     result = await ctx.session.execute(select(User))
     return [_to_user_out(u, u.role.key) for u in result.scalars()]
 
@@ -68,15 +97,26 @@ async def create_user(
     raw_body = await request.body()
     fingerprint = fingerprint_request("POST", "/api/v1/users", ctx.business_id, raw_body)
     claimed_id = await claim_or_replay(
-        ctx.session, business_id=ctx.business_id, key=idempotency_key,
-        endpoint="POST /api/v1/users", fingerprint=fingerprint,
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint="POST /api/v1/users",
+        fingerprint=fingerprint,
     )
     if claimed_id is None:
         existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
         if existing.request_fingerprint != fingerprint:
             raise HTTPException(
-                status_code=409, detail="This Idempotency-Key was already used for a different request."
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
             )
+        if existing.response_body is None:
+            # See idempotency_service.py's module docstring: a row reached
+            # via claim_or_replay's "conflict" branch is guaranteed complete
+            # by Postgres's own locking behaviour. Not `assert` (bandit
+            # B101: stripped under `python -O`) -- an explicit raise here
+            # survives that and still becomes a generic, logged 500.
+            raise RuntimeError("idempotency row has no response_body despite being complete")
         return UserOut(**existing.response_body)
 
     role_result = await ctx.session.execute(
@@ -126,15 +166,30 @@ async def change_user_role(
     only ever asserted about in a unit test.
     """
     raw_body = await request.body()
-    fingerprint = fingerprint_request("POST", f"/api/v1/users/{user_id}/role", ctx.business_id, raw_body)
+    fingerprint = fingerprint_request(
+        "POST", f"/api/v1/users/{user_id}/role", ctx.business_id, raw_body
+    )
     claimed_id = await claim_or_replay(
-        ctx.session, business_id=ctx.business_id, key=idempotency_key,
-        endpoint="POST /api/v1/users/{user_id}/role", fingerprint=fingerprint,
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint="POST /api/v1/users/{user_id}/role",
+        fingerprint=fingerprint,
     )
     if claimed_id is None:
         existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
         if existing.request_fingerprint != fingerprint:
-            raise HTTPException(status_code=409, detail="This Idempotency-Key was already used for a different request.")
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            # See idempotency_service.py's module docstring: a row reached
+            # via claim_or_replay's "conflict" branch is guaranteed complete
+            # by Postgres's own locking behaviour. Not `assert` (bandit
+            # B101: stripped under `python -O`) -- an explicit raise here
+            # survives that and still becomes a generic, logged 500.
+            raise RuntimeError("idempotency row has no response_body despite being complete")
         return UserOut(**existing.response_body)
 
     user = await ctx.session.get(User, user_id)
@@ -152,8 +207,11 @@ async def change_user_role(
     user.role_id = new_role.id
     await ctx.session.flush()
     await append_audit_log(
-        ctx.session, business_id=ctx.business_id, event_type="ROLE_CHANGED",
-        actor_user_id=ctx.user_id, subject_user_id=user.id,
+        ctx.session,
+        business_id=ctx.business_id,
+        event_type="ROLE_CHANGED",
+        actor_user_id=ctx.user_id,
+        subject_user_id=user.id,
         detail={"old_role_key": old_role_key, "new_role_key": new_role.key},
     )
 
@@ -178,15 +236,30 @@ async def override_user_permission(
         raise HTTPException(status_code=422, detail="effect must be 'grant' or 'revoke'.")
 
     raw_body = await request.body()
-    fingerprint = fingerprint_request("POST", f"/api/v1/users/{user_id}/grants", ctx.business_id, raw_body)
+    fingerprint = fingerprint_request(
+        "POST", f"/api/v1/users/{user_id}/grants", ctx.business_id, raw_body
+    )
     claimed_id = await claim_or_replay(
-        ctx.session, business_id=ctx.business_id, key=idempotency_key,
-        endpoint="POST /api/v1/users/{user_id}/grants", fingerprint=fingerprint,
+        ctx.session,
+        business_id=ctx.business_id,
+        key=idempotency_key,
+        endpoint="POST /api/v1/users/{user_id}/grants",
+        fingerprint=fingerprint,
     )
     if claimed_id is None:
         existing = await get_existing(ctx.session, business_id=ctx.business_id, key=idempotency_key)
         if existing.request_fingerprint != fingerprint:
-            raise HTTPException(status_code=409, detail="This Idempotency-Key was already used for a different request.")
+            raise HTTPException(
+                status_code=409,
+                detail="This Idempotency-Key was already used for a different request.",
+            )
+        if existing.response_body is None:
+            # See idempotency_service.py's module docstring: a row reached
+            # via claim_or_replay's "conflict" branch is guaranteed complete
+            # by Postgres's own locking behaviour. Not `assert` (bandit
+            # B101: stripped under `python -O`) -- an explicit raise here
+            # survives that and still becomes a generic, logged 500.
+            raise RuntimeError("idempotency row has no response_body despite being complete")
         return UserOut(**existing.response_body)
 
     user = await ctx.session.get(User, user_id)
@@ -195,14 +268,21 @@ async def override_user_permission(
 
     ctx.session.add(
         UserGrant(
-            business_id=ctx.business_id, user_id=user.id, permission_key=body.permission_key,
-            effect=body.effect, location_id=body.location_id, created_by_user_id=ctx.user_id,
+            business_id=ctx.business_id,
+            user_id=user.id,
+            permission_key=body.permission_key,
+            effect=body.effect,
+            location_id=body.location_id,
+            created_by_user_id=ctx.user_id,
         )
     )
     await ctx.session.flush()
     await append_audit_log(
-        ctx.session, business_id=ctx.business_id, event_type="PERMISSION_OVERRIDDEN",
-        actor_user_id=ctx.user_id, subject_user_id=user.id,
+        ctx.session,
+        business_id=ctx.business_id,
+        event_type="PERMISSION_OVERRIDDEN",
+        actor_user_id=ctx.user_id,
+        subject_user_id=user.id,
         detail={
             "permission_key": body.permission_key,
             "effect": body.effect,

@@ -8,12 +8,29 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHash, VerifyMismatchError
 from argon2.low_level import Type
 
-_ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16, type=Type.ID)
+_ph = PasswordHasher(
+    time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16, type=Type.ID
+)
 
 _TRIVIAL_PINS = {
-    "000000", "111111", "222222", "333333", "444444", "555555",
-    "666666", "777777", "888888", "999999", "123456", "654321",
-    "012345", "543210", "123123", "112233", "121212", "010101",
+    "000000",
+    "111111",
+    "222222",
+    "333333",
+    "444444",
+    "555555",
+    "666666",
+    "777777",
+    "888888",
+    "999999",
+    "123456",
+    "654321",
+    "012345",
+    "543210",
+    "123123",
+    "112233",
+    "121212",
+    "010101",
 }
 
 
@@ -25,9 +42,7 @@ def is_trivial_pin(pin: str) -> bool:
         return True
     if all(digits[i + 1] - digits[i] == 1 for i in range(len(digits) - 1)):
         return True
-    if all(digits[i] - digits[i + 1] == 1 for i in range(len(digits) - 1)):
-        return True
-    return False
+    return all(digits[i] - digits[i + 1] == 1 for i in range(len(digits) - 1))
 
 
 def validate_pin(pin: str) -> None:

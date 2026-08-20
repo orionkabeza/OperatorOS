@@ -106,7 +106,12 @@ async def complete(
     session: AsyncSession, *, claimed_id: str, status_code: int, body: dict[str, Any]
 ) -> None:
     row = await session.get(IdempotencyKey, claimed_id)
-    assert row is not None
+    if row is None:
+        # claimed_id came from claim_or_replay's own successful INSERT
+        # moments earlier in the same transaction -- unreachable in
+        # practice. An explicit raise, not `assert` (bandit B101: stripped
+        # under `python -O`).
+        raise RuntimeError("claimed idempotency row disappeared before completion")
     row.status_code = status_code
     row.response_body = body
     row.completed_at = datetime.now(UTC)

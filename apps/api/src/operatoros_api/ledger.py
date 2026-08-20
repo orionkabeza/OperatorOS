@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,7 @@ VALID_ACTOR_SOURCES = frozenset({"web", "mobile", "whatsapp", "api", "system"})
 
 
 class EnvelopeValidationError(Exception):
-    def __init__(self, message: str, errors: list[dict] | None = None) -> None:
+    def __init__(self, message: str, errors: list[Any] | None = None) -> None:
         super().__init__(message)
         self.errors = errors or []
 

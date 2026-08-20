@@ -22,7 +22,9 @@ from operatoros_api.security.identifiers import hash_identifier
 from operatoros_api.security.passwords import hash_secret
 
 
-async def create_business(session: AsyncSession, *, name: str, slug: str, currency: str = "RWF") -> Business:
+async def create_business(
+    session: AsyncSession, *, name: str, slug: str, currency: str = "RWF"
+) -> Business:
     business = Business(name=name, slug=slug.strip().lower(), currency=currency)
     session.add(business)
     await session.flush()

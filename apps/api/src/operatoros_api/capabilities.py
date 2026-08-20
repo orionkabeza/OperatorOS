@@ -56,10 +56,24 @@ DEFAULT_ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
     "owner": frozenset(CAPABILITIES.keys()),
     "manager": frozenset(
         {
-            "sale.create", "sale.void", "sale.discount.over_threshold", "sale.price_override",
-            "product.view_cost", "product.manage", "stock.adjust", "stock.transfer",
-            "debt.write_off", "debt.credit_override", "report.view", "data.export",
-            "user.manage", "day.open", "day.close", "day.reopen", "till.open", "till.close",
+            "sale.create",
+            "sale.void",
+            "sale.discount.over_threshold",
+            "sale.price_override",
+            "product.view_cost",
+            "product.manage",
+            "stock.adjust",
+            "stock.transfer",
+            "debt.write_off",
+            "debt.credit_override",
+            "report.view",
+            "data.export",
+            "user.manage",
+            "day.open",
+            "day.close",
+            "day.reopen",
+            "till.open",
+            "till.close",
             "return.approve",
         }
     ),
@@ -98,9 +112,9 @@ async def resolve_effective_capabilities(
     role_key: str,
     assigned_location_ids: list[str],
 ) -> EffectiveCapabilities:
-    grants: dict[str, set[str] | None] = {
-        key: None for key in DEFAULT_ROLE_CAPABILITIES.get(role_key, frozenset())
-    }
+    grants: dict[str, set[str] | None] = dict.fromkeys(
+        DEFAULT_ROLE_CAPABILITIES.get(role_key, frozenset())
+    )
 
     result = await session.execute(
         select(UserGrant).where(UserGrant.user_id == user_id).order_by(UserGrant.created_at)
