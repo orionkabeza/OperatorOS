@@ -374,6 +374,7 @@ export const CUSTOMERS: Customer[] = [
     balanceMinor: rwf(1_760_000),
     termsDays: 30,
     onHold: false,
+    trade: "Kigali Builders Ltd",
   },
   {
     id: "cust-nzeyimana",
@@ -392,5 +393,71 @@ export const CUSTOMERS: Customer[] = [
     balanceMinor: rwf(120_000),
     termsDays: 30,
     onHold: false,
+    trade: "Divine Umutoni Hardware Supplies",
+  },
+  // Phase 2 (Debt Book) — added for realistic ageing-bucket and
+  // account-status coverage. Jean Bosco Habimana's id/phone/trade/balance
+  // deliberately mirror design-reference/debt-book-stock-room.dc.html's
+  // first fixture customer (c1) so the ported UI reads as continuous with
+  // the verified design reference, not a re-invented dataset.
+  {
+    id: "cust-habimana",
+    name: "Jean Bosco Habimana",
+    phone: "+250788214660",
+    creditLimitMinor: rwf(2_000_000),
+    balanceMinor: rwf(1_845_000),
+    termsDays: 30,
+    onHold: false,
+    trade: "Habimana Construction",
+  },
+  {
+    id: "cust-mukamana",
+    name: "Alice Mukamana",
+    phone: "+250788771122",
+    creditLimitMinor: rwf(500_000),
+    balanceMinor: rwf(180_000),
+    termsDays: 14,
+    onHold: false,
+    trade: "Mukamana General Store",
+  },
+  {
+    id: "cust-gasana",
+    name: "Emmanuel Gasana",
+    phone: "+250788882233",
+    creditLimitMinor: rwf(800_000),
+    balanceMinor: rwf(340_000),
+    termsDays: 30,
+    onHold: false,
+    trade: "Gasana Construction Co",
+  },
+  {
+    id: "cust-uwase",
+    name: "Solange Uwase",
+    phone: "+250788993344",
+    creditLimitMinor: rwf(600_000),
+    balanceMinor: rwf(410_000),
+    termsDays: 14,
+    onHold: false,
+    trade: "Uwase Trading",
+  },
+  {
+    id: "cust-ndayisenga",
+    name: "Patrick Ndayisenga",
+    phone: "+250788004455",
+    creditLimitMinor: rwf(1_500_000),
+    balanceMinor: rwf(1_620_000), // deliberately over the credit limit — the "over limit" fixture
+    termsDays: 30,
+    onHold: false,
+    trade: "Ndayisenga Hardware",
+  },
+  {
+    id: "cust-rukundo",
+    name: "Immaculee Rukundo",
+    phone: "+250788115566",
+    creditLimitMinor: rwf(400_000),
+    balanceMinor: rwf(0), // no open debt — the "current, nothing owed" fixture
+    termsDays: 14,
+    onHold: false,
+    trade: "Rukundo Hardware & Paint",
   },
 ];
