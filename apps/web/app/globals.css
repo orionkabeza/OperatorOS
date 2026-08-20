@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-archivo: "Archivo Variable", sans-serif;
+    --font-public-sans: "Public Sans", sans-serif;
+    --font-plex-mono: "IBM Plex Mono", monospace;
+  }
+
+  html,
+  body {
+    height: 100%;
+    /* The page itself must never scroll horizontally — spec: "everything fits
+       the screen without sliding off". Wide content (tables, charts) scrolls
+       inside its own container instead; see .scroll-x-safe below. */
+    overflow-x: hidden;
+  }
+
+  body {
+    background-color: theme("colors.floor");
+    color: theme("colors.ink");
+    font-family: var(--font-public-sans);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: theme("colors.tape");
+    color: theme("colors.ink");
+  }
+
+  /* B.6 focus rule: 2px tape outline, 2px offset, plus a 1px ink inner ring
+     so focus is visible even on the yellow accent itself. */
+  :focus-visible {
+    outline: 2px solid theme("colors.tape");
+    outline-offset: 2px;
+    box-shadow: 0 0 0 1px theme("colors.ink");
+    border-radius: theme("borderRadius.DEFAULT");
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Archivo Expanded per B.3 — the variable font's width axis dialed to
+     "expanded" via font-stretch, applied alongside the `font-display`
+     Tailwind class rather than baked into the font-family itself. */
+  .type-expanded {
+    font-stretch: 125%;
+  }
+
+  /* Any table/chart/wide-content container gets its own horizontal scroll
+     instead of ever pushing the page wide. */
+  .scroll-x-safe {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  /* D.1 Shutter: horizontal slat texture. Not expressible as a discrete
+     Tailwind utility (repeating-linear-gradient), so it lives here as a
+     real stylesheet rule rather than an inline style — keeps style-src
+     free of unsafe-inline. */
+  .shutter-slats::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045) 0 1px,
+      transparent 1px 14px
+    );
+  }
+
+  /* B.5.1: the stencilled business name, sized responsively between the
+     mobile and desktop extremes the spec gives (56px desktop, scales down). */
+  .shutter-brand-text {
+    font-size: clamp(1.75rem, 7vw, 3.5rem);
+  }
+}

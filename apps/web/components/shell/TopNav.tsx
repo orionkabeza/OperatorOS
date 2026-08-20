@@ -1,0 +1,90 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useDemoAuthStore } from "@/lib/demo-auth-store";
+
+/** C.2 — top nav: business + location switcher, global search / ⌘K, day status, notifications, avatar. */
+export function TopNav({ businessName = "Kigali Hardware Supplies" }: { businessName?: string }) {
+  const signOut = useDemoAuthStore((s) => s.signOut);
+  const [cmdOpen, setCmdOpen] = useState(false);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen(true);
+      }
+      if (e.key === "Escape") setCmdOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  return (
+    <header className="sticky top-0 z-30 flex h-rail items-center justify-between gap-16 bg-steel px-24">
+      <div className="flex min-w-0 items-center gap-12">
+        <span className="type-expanded truncate font-display text-table font-bold text-white">
+          {businessName}
+        </span>
+        <button
+          type="button"
+          className="rounded border border-white/20 px-8 py-4 text-meta text-white/70 hover:border-white/40 hover:text-white"
+        >
+          Nyabugogo branch ▾
+        </button>
+      </div>
+
+      <div className="hidden flex-1 justify-center md:flex">
+        <button
+          type="button"
+          onClick={() => setCmdOpen(true)}
+          className="flex h-control w-full max-w-md items-center justify-between rounded border border-white/20 bg-steel-deep px-12 text-meta text-white/60 hover:border-white/40"
+        >
+          <span>Search products, customers, receipts…</span>
+          <kbd className="rounded border border-white/20 px-4 font-mono text-micro">⌘K</kbd>
+        </button>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-16">
+        <span className="hidden items-center gap-8 text-meta text-white/70 sm:flex">
+          <span aria-hidden className="h-8 w-8 rounded-full bg-in" />
+          Shop open
+        </span>
+        <button type="button" aria-label="Notifications" className="text-white/70 hover:text-white">
+          🔔
+        </button>
+        <button
+          type="button"
+          onClick={signOut}
+          className="flex h-control-lg w-control-lg items-center justify-center rounded bg-tape text-table font-bold text-ink"
+          title="Sign out"
+        >
+          AM
+        </button>
+      </div>
+
+      {cmdOpen ? (
+        <div
+          role="dialog"
+          aria-label="Search"
+          className="fixed inset-0 z-40 flex items-start justify-center bg-steel-deep/40 pt-96"
+          onClick={() => setCmdOpen(false)}
+        >
+          <div
+            className="w-drawer max-w-full rounded border border-rule bg-paper p-16 shadow-shelf"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              autoFocus
+              placeholder="Search products, customers, receipts…"
+              className="h-control w-full rounded border border-rule bg-paper px-12 text-body focus:border-steel focus:outline-none focus:ring-2 focus:ring-tape"
+            />
+            <p className="mt-12 text-meta text-ink-soft">
+              Command palette scaffold — real search lands with Counter/Stock Room (Phase 1).
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </header>
+  );
+}
