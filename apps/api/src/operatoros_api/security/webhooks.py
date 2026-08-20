@@ -24,8 +24,11 @@ MAX_CLOCK_SKEW_SECONDS = 300  # 5 minutes
 # computation and a real hmac.compare_digest against THIS instead of
 # short-circuiting keeps the "not found" path's CPU cost/timing in the
 # same ballpark as "found, but signature mismatched" -- see
-# docs/DECISIONS.md point 3.
-_DUMMY_SECRET = "operatoros-momo-webhook-dummy-secret-never-used-for-real-auth"
+# docs/DECISIONS.md point 3. Not a credential -- bandit's hardcoded-
+# password heuristic matches on the variable name alone; nosec is scoped
+# to this exact line, not the rule globally (same convention as
+# api/routers/auth.py's empty TokenPair placeholders).
+_DUMMY_SECRET = "operatoros-momo-webhook-dummy-secret-never-used-for-real-auth"  # nosec B105
 
 
 def compute_signature(secret: str, timestamp: str, nonce: str, raw_body: bytes) -> str:
