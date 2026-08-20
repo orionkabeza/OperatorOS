@@ -33,7 +33,12 @@ from tests.conftest import SeededTenant
 async def _make_product(tenant: SeededTenant) -> str:
     async with tenant_scoped_session(tenant.business.id) as session:
         category = Category(business_id=tenant.business.id, name=f"cat-{uuid.uuid4().hex[:6]}")
-        unit = Unit(business_id=tenant.business.id, name="piece", symbol="pc")
+        # A distinct name each call -- tenant fixtures now seed their own
+        # "piece" unit too (tests/conftest.py::make_tenant), and (business_id,
+        # name) is unique on `units`.
+        unit = Unit(
+            business_id=tenant.business.id, name=f"unit-{uuid.uuid4().hex[:6]}", symbol="pc"
+        )
         session.add_all([category, unit])
         await session.flush()
         product = Product(
@@ -426,9 +431,16 @@ async def test_daily_totals_rollback_leaves_no_row_behind(tenant_a: SeededTenant
 
 @pytest.mark.asyncio
 async def test_daily_totals_requires_an_open_day_session(tenant_a: SeededTenant) -> None:
-    """No DaySession was opened for this location -- the handler must raise
-    rather than silently guess a business_date (module docstring)."""
+    """No OPEN DaySession exists for this location -- the handler must raise
+    rather than silently guess a business_date (module docstring).
+    `tenant_a` fixture seeds one open DaySession already (tests/conftest.py,
+    needed so the cross-tenant isolation suite has a till_session_id to
+    attack), so it's closed here first to reach the genuinely-no-open-day
+    state this test is about."""
     product_id = await _make_product(tenant_a)
+    async with tenant_scoped_session(tenant_a.business.id) as session:
+        day = await session.get(DaySession, tenant_a.day_session.id)
+        day.status = "closed"
 
     with pytest.raises(ValueError, match="No open day session"):
         async with tenant_scoped_session(tenant_a.business.id) as session:
@@ -504,10 +516,13 @@ async def test_sale_payments_move_money_location_balance_but_credit_lines_do_not
                 location_id=tenant_a.location.id,
             ),
         )
+        # "cash" payments land in the "till" account_key, matching D.7.1's
+        # named "TILL" balance and DAY_OPENED/DAY_CLOSED's reconciliation
+        # target -- see money_location_balance.py's _PAYMENT_METHOD_ACCOUNT_KEY.
         cash_result = await session.execute(
             select(MoneyLocationBalance).where(
                 MoneyLocationBalance.location_id == tenant_a.location.id,
-                MoneyLocationBalance.account_key == "cash",
+                MoneyLocationBalance.account_key == "till",
             )
         )
         assert cash_result.scalar_one().balance_minor == 100000

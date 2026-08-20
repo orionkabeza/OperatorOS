@@ -34,12 +34,22 @@ from operatoros_api.projections.framework import register_projection
 
 
 async def _business_date(session: AsyncSession, business_id: str, location_id: str) -> date:
+    # Ordered + limited to the most-recently-opened session rather than
+    # scalar_one_or_none(): the `day` router's own open-day endpoint blocks
+    # a second concurrent open for the same location, so in real operation
+    # there is only ever one open DaySession per location -- but this
+    # handler shouldn't itself assume that invariant is unbreakable (e.g. a
+    # test fixture or a future admin tool inserting a row directly), so it
+    # picks the most recent rather than raising MultipleResultsFound.
     result = await session.execute(
-        select(DaySession.business_date).where(
+        select(DaySession.business_date)
+        .where(
             DaySession.business_id == business_id,
             DaySession.location_id == location_id,
             DaySession.status == "open",
         )
+        .order_by(DaySession.opened_at.desc())
+        .limit(1)
     )
     row = result.scalar_one_or_none()
     if row is None:

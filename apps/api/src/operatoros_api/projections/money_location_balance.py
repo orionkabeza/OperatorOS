@@ -91,6 +91,17 @@ async def on_expense_recorded(session: AsyncSession, event: Event) -> None:
     row.updated_at_ledger = event.occurred_at
 
 
+# Payment method -> money-location account_key. "cash" maps to "till" (spec
+# D.7.1's balances band names the physical cash account "TILL", the same
+# account DAY_OPENED/DAY_CLOSED reconciles) rather than a literal "cash"
+# account that would never otherwise exist. Every other method keeps its
+# own name as its own account (momo, airtel, bank, card, cheque) -- D.7.1
+# names MTN MoMo/Airtel/Bank explicitly; card/cheque aren't in that
+# example band but are structurally the same kind of account, just not
+# called out by name in the spec's illustration.
+_PAYMENT_METHOD_ACCOUNT_KEY = {"cash": "till"}
+
+
 @register_projection("SALE_RECORDED")
 async def on_sale_recorded_money(session: AsyncSession, event: Event) -> None:
     if event.location_id is None:
@@ -99,8 +110,9 @@ async def on_sale_recorded_money(session: AsyncSession, event: Event) -> None:
     for pay in payload["payments"]:
         if pay["method"] == "credit":
             continue
+        account_key = _PAYMENT_METHOD_ACCOUNT_KEY.get(pay["method"], pay["method"])
         row = await _get_or_create_locked(
-            session, event.business_id, event.location_id, pay["method"]
+            session, event.business_id, event.location_id, account_key
         )
         row.balance_minor += int(pay["amount_minor"])
         row.last_event_id = event.id
@@ -158,7 +170,8 @@ def recompute_from_events(events: list[Event]) -> dict[tuple[str, str, str], int
             for pay in event.payload["payments"]:
                 if pay["method"] == "credit":
                     continue
-                _bump(event.business_id, event.location_id, pay["method"], int(pay["amount_minor"]))
+                account_key = _PAYMENT_METHOD_ACCOUNT_KEY.get(pay["method"], pay["method"])
+                _bump(event.business_id, event.location_id, account_key, int(pay["amount_minor"]))
         elif event.type in ("DAY_OPENED", "DAY_CLOSED"):
             key = (event.business_id, event.location_id, "till")
             balances[key] = int(event.payload["counted_amount_minor"])
