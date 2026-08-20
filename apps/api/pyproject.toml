@@ -39,7 +39,7 @@ dev = [
     "fakeredis>=2.26,<3.0",
     "freezegun>=1.5,<2.0",
     "types-redis",
-    "pgserver>=0.1.6,<1.0",
+    "pgserver>=0.1.4,<1.0",
     "openpyxl>=3.1,<4.0",
 ]
 
