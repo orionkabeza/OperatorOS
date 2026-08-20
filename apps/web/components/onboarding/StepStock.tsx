@@ -1,10 +1,18 @@
 "use client";
 
 import clsx from "clsx";
+import dynamic from "next/dynamic";
 import { Card } from "../design/Card";
-import { CsvImporter } from "./CsvImporter";
 import { GridEntryTable } from "./GridEntryTable";
 import type { OnboardingState } from "@/lib/api/types";
+
+// exceljs (pulled in by CsvImporter -> lib/import-parse.ts) is a sizeable
+// library only needed by the minority of businesses that pick "Upload a
+// list" in Step 3 — split it into its own chunk rather than shipping it in
+// every onboarding page load. See docs/DECISIONS.md (bundle-budget note).
+const CsvImporter = dynamic(() => import("./CsvImporter").then((m) => m.CsvImporter), {
+  ssr: false,
+});
 
 type StockPath = NonNullable<OnboardingState["stockPath"]>;
 

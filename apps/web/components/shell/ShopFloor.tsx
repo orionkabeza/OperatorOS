@@ -1,14 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Counter } from "../counter/Counter";
-import { CloseShopFlow } from "../day/CloseShopFlow";
+import dynamic from "next/dynamic";
 import { OpenShopModal } from "../day/OpenShopModal";
 import { TillSessionModal } from "../day/TillSessionModal";
 import { EmptyState } from "../design/EmptyState";
-import { StockRoom } from "../stock/StockRoom";
-import { Overview } from "../overview/Overview";
 import { ROOMS } from "@/lib/rooms";
+
+// Each room is its own chunk, loaded only when a cashier actually opens
+// it — a shift that never touches Stock Room shouldn't pay to download it.
+// See docs/DECISIONS.md (bundle-budget note, spec G's <250KB-gzipped
+// initial-route budget).
+const Counter = dynamic(() => import("../counter/Counter").then((m) => m.Counter), { ssr: false });
+const StockRoom = dynamic(() => import("../stock/StockRoom").then((m) => m.StockRoom), { ssr: false });
+const Overview = dynamic(() => import("../overview/Overview").then((m) => m.Overview), { ssr: false });
+const CloseShopFlow = dynamic(
+  () => import("../day/CloseShopFlow").then((m) => m.CloseShopFlow),
+  { ssr: false },
+);
 import { useDayStatus } from "@/lib/queries/day";
 import { RoomNav } from "./RoomNav";
 import { TallyRail } from "./TallyRail";
