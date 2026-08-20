@@ -36,9 +36,7 @@ def include_object(object, name, type_, reflected, compare_to):  # noqa: A002
     # diffing (we don't use autogenerate at all in this repo yet -- every
     # migration here is hand-written -- but this keeps the door open
     # without a footgun).
-    if type_ == "table" and name == "events":
-        return False
-    return True
+    return not (type_ == "table" and name == "events")
 
 
 def run_migrations_offline() -> None:
