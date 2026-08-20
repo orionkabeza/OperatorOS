@@ -865,8 +865,8 @@ export interface RecordExpenseInput {
   moneyLocationAccountKey: string;
   payee: string;
   date: string;
-  note?: string;
-  receiptPhotoUrl?: string | null;
+  note?: string | undefined;
+  receiptPhotoUrl?: string | null | undefined;
 }
 
 export interface RecurringExpense {

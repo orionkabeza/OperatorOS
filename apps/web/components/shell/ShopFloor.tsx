@@ -13,6 +13,8 @@ import { ROOMS } from "@/lib/rooms";
 // initial-route budget).
 const Counter = dynamic(() => import("../counter/Counter").then((m) => m.Counter), { ssr: false });
 const StockRoom = dynamic(() => import("../stock/StockRoom").then((m) => m.StockRoom), { ssr: false });
+const DebtBook = dynamic(() => import("../debt/DebtBook").then((m) => m.DebtBook), { ssr: false });
+const CashBox = dynamic(() => import("../cashbox/CashBox").then((m) => m.CashBox), { ssr: false });
 const Overview = dynamic(() => import("../overview/Overview").then((m) => m.Overview), { ssr: false });
 const CloseShopFlow = dynamic(
   () => import("../day/CloseShopFlow").then((m) => m.CloseShopFlow),
@@ -23,9 +25,9 @@ import { RoomNav } from "./RoomNav";
 import { TallyRail } from "./TallyRail";
 import { TopNav } from "./TopNav";
 
+const KNOWN_ROOMS = ["counter", "stock-room", "debt-book", "cash-box", "back-office"];
+
 const EMPTY_MESSAGES: Record<string, string> = {
-  "debt-book": "No one owes you anything right now. Credit sales and reminders land in Phase 2.",
-  "cash-box": "No money movements yet. Till, MoMo, and bank tracking land in Phase 2.",
   suppliers: "No suppliers yet. Purchase orders and goods receipt land in Phase 3.",
   team: "No staff activity yet. Shifts, commission, and the exception report land in Phase 4.",
 };
@@ -57,10 +59,10 @@ export function ShopFloor() {
           <h1 className="type-expanded mb-24 font-display text-screen-title font-bold text-ink">{room?.label}</h1>
           {activeRoom === "counter" ? <Counter /> : null}
           {activeRoom === "stock-room" ? <StockRoom /> : null}
+          {activeRoom === "debt-book" ? <DebtBook /> : null}
+          {activeRoom === "cash-box" ? <CashBox /> : null}
           {activeRoom === "back-office" ? <Overview /> : null}
-          {activeRoom !== "counter" && activeRoom !== "stock-room" && activeRoom !== "back-office" ? (
-            <EmptyState statement={EMPTY_MESSAGES[activeRoom] ?? "Nothing here yet."} />
-          ) : null}
+          {!KNOWN_ROOMS.includes(activeRoom) ? <EmptyState statement={EMPTY_MESSAGES[activeRoom] ?? "Nothing here yet."} /> : null}
         </main>
       </div>
       <OpenShopModal open={Boolean(showOpenShop)} onDeferred={() => setOpenShopDeferred(true)} />

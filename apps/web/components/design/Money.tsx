@@ -10,7 +10,18 @@ const SIZE_CLASS = {
   table: "text-table",
 } as const;
 
-const EMPHASIS_CLASS = { out: "text-out", watch: "text-watch", in: "text-in" } as const;
+/**
+ * Keyed by surface, not just emphasis kind — `text-out`/`text-watch`/`text-in`
+ * fail WCAG AA against `--steel`/`--steel-deep` (same contrast problem
+ * `-dark` token variants already fix for Qty and for Money's own negative-
+ * amount case below). Debt Book's dark header band (D.6) is the first
+ * caller needing `emphasis` on a dark surface — surfaced by building it,
+ * not assumed in advance.
+ */
+const EMPHASIS_CLASS = {
+  light: { out: "text-out", watch: "text-watch", in: "text-in" },
+  dark: { out: "text-out-dark", watch: "text-watch-dark", in: "text-in-dark" },
+} as const;
 
 export function Money({
   amount,
@@ -39,7 +50,7 @@ export function Money({
    * sign, only recolors). Ignored when the amount is genuinely negative
    * (that always wins, and always gets the leading minus).
    */
-  emphasis?: keyof typeof EMPHASIS_CLASS | undefined;
+  emphasis?: keyof typeof EMPHASIS_CLASS.light | undefined;
   className?: string | undefined;
 }) {
   const { negative, figure } = toRwfParts(amount);
@@ -54,7 +65,15 @@ export function Money({
       <span
         className={clsx(
           SIZE_CLASS[size],
-          negative ? "text-out" : emphasis ? EMPHASIS_CLASS[emphasis] : surface === "dark" ? "text-white" : "text-ink",
+          negative
+            ? surface === "dark"
+              ? "text-out-dark"
+              : "text-out"
+            : emphasis
+              ? EMPHASIS_CLASS[surface][emphasis]
+              : surface === "dark"
+                ? "text-white"
+                : "text-ink",
         )}
       >
         {negative ? "-" : ""}

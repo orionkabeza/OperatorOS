@@ -14,7 +14,7 @@ export function useMoneyMovements(filters?: MoneyMovementFilters) {
 export function useUpdateMoneyLocationBalance() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { accountKey: string; countedMinor: MinorUnits; reason?: string }) =>
+    mutationFn: (args: { accountKey: string; countedMinor: MinorUnits; reason?: string | undefined }) =>
       updateMoneyLocationBalance(args.accountKey, args.countedMinor, args.reason),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["money-locations"] });

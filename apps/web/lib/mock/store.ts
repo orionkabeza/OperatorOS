@@ -68,6 +68,27 @@ import {
 
 export { EXPENSE_APPROVAL_THRESHOLD_MINOR };
 
+// ---------------------------------------------------------------------------
+// Phase 2 — small Customer-entity mutations the Debt Book's row actions need
+// (put on hold, adjust credit limit) — live here alongside the rest of
+// Phase 1's direct customer CRUD in this file, not in the debt-specific
+// section below, since `Customer` itself is still a Phase 1 entity.
+// ---------------------------------------------------------------------------
+
+export function setCustomerHold(customerId: string, onHold: boolean): Customer {
+  const customer = db.customers.find((c) => c.id === customerId);
+  if (!customer) throw new Error(`Mock: customer ${customerId} not found`);
+  customer.onHold = onHold;
+  return customer;
+}
+
+export function setCustomerCreditLimit(customerId: string, creditLimitMinor: MinorUnits): Customer {
+  const customer = db.customers.find((c) => c.id === customerId);
+  if (!customer) throw new Error(`Mock: customer ${customerId} not found`);
+  customer.creditLimitMinor = creditLimitMinor;
+  return customer;
+}
+
 /**
  * In-memory mutable "ledger" the mock adapter reads and writes. This is the
  * one place that simulates what apps/api's projections will do for real:
