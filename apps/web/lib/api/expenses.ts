@@ -1,9 +1,21 @@
+import type { MinorUnits } from "@operatoros/shared";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
 import { apiRequest, newIdempotencyKey, USE_MOCK_API } from "./config";
 import type { Expense, RecordExpenseInput, RecurringExpense } from "./types";
 
+/** Initial/default value only — the live, mutable threshold (Back Office → Settings) is `getApprovalThreshold()` below. */
 export const EXPENSE_APPROVAL_THRESHOLD_MINOR = store.EXPENSE_APPROVAL_THRESHOLD_MINOR;
+
+export async function getApprovalThreshold(): Promise<MinorUnits> {
+  if (USE_MOCK_API) return mockDelay(store.getExpenseApprovalThreshold());
+  return apiRequest<MinorUnits>("GET", "/api/v1/expenses/approval-threshold");
+}
+
+export async function setApprovalThreshold(amountMinor: MinorUnits): Promise<MinorUnits> {
+  if (USE_MOCK_API) return mockDelay(store.setExpenseApprovalThreshold(amountMinor));
+  return apiRequest<MinorUnits>("POST", "/api/v1/expenses/approval-threshold", { body: { amountMinor }, idempotencyKey: newIdempotencyKey() });
+}
 
 export async function listExpenses(): Promise<Expense[]> {
   if (USE_MOCK_API) return mockDelay(store.listExpenses());

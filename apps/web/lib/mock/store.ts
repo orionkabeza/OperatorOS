@@ -18,6 +18,7 @@ import type {
   Expense,
   Invoice,
   MatchMomoTransactionInput,
+  MomoProviderConnection,
   MomoTransaction,
   MoneyLocation,
   MoneyMovement,
@@ -139,6 +140,8 @@ interface MockDb {
   expenses: Expense[];
   recurringExpenses: RecurringExpense[];
   payLinks: PayLinkRecord[];
+  expenseApprovalThresholdMinor: MinorUnits;
+  momoConnection: MomoProviderConnection;
 }
 
 function freshDb(): MockDb {
@@ -180,6 +183,8 @@ function freshDb(): MockDb {
         expiresAt: new Date(Date.now() + 48 * 3_600_000).toISOString(),
       },
     ],
+    expenseApprovalThresholdMinor: EXPENSE_APPROVAL_THRESHOLD_MINOR,
+    momoConnection: { provider: "mtn", status: "connected", merchantCode: "774411" },
   };
 }
 
@@ -1295,7 +1300,7 @@ export function listExpenses(): Expense[] {
 }
 
 export function recordExpense(input: RecordExpenseInput): Expense {
-  const aboveThreshold = input.amountMinor >= EXPENSE_APPROVAL_THRESHOLD_MINOR;
+  const aboveThreshold = input.amountMinor >= db.expenseApprovalThresholdMinor;
   const expense: Expense = {
     id: `exp-${crypto.randomUUID()}`,
     amountMinor: input.amountMinor,
@@ -1356,6 +1361,31 @@ export function toggleRecurringExpense(id: string, active: boolean): RecurringEx
   if (!rec) throw new Error(`Mock: recurring expense ${id} not found`);
   rec.active = active;
   return rec;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Back Office additions: expense approval threshold, MoMo "Connect now"
+// ---------------------------------------------------------------------------
+
+export function getExpenseApprovalThreshold(): MinorUnits {
+  return db.expenseApprovalThresholdMinor;
+}
+
+export function setExpenseApprovalThreshold(amountMinor: MinorUnits): MinorUnits {
+  db.expenseApprovalThresholdMinor = amountMinor;
+  return db.expenseApprovalThresholdMinor;
+}
+
+export function getMomoConnection(): MomoProviderConnection {
+  return db.momoConnection;
+}
+
+/** D.7/plan §0.3 — "Connect now" against the sandbox MoMo provider (real for the sandbox, per docs/DECISIONS.md's "mobile money is a real signed-webhook seam behind a sandbox provider"). */
+export function setMomoConnection(status: "connected" | "not_connected", merchantCode?: string): MomoProviderConnection {
+  db.momoConnection = { ...db.momoConnection, status, merchantCode: status === "connected" ? (merchantCode ?? db.momoConnection.merchantCode) : null };
+  const loc = db.moneyLocations.find((l) => l.accountKey === "momo");
+  if (loc) loc.connectionStatus = status === "connected" ? "connected" : "manual";
+  return db.momoConnection;
 }
 
 export { UNITS, CATEGORIES };

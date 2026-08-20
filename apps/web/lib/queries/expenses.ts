@@ -1,5 +1,6 @@
+import type { MinorUnits } from "@operatoros/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { approveExpense, createRecurringExpense, listExpenses, listRecurringExpenses, recordExpense, rejectExpense, toggleRecurringExpense } from "../api/expenses";
+import { approveExpense, createRecurringExpense, getApprovalThreshold, listExpenses, listRecurringExpenses, recordExpense, rejectExpense, setApprovalThreshold, toggleRecurringExpense } from "../api/expenses";
 import type { RecordExpenseInput } from "../api/types";
 
 export function useExpenses() {
@@ -53,5 +54,19 @@ export function useToggleRecurringExpense() {
   return useMutation({
     mutationFn: (args: { id: string; active: boolean }) => toggleRecurringExpense(args.id, args.active),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["recurring-expenses"] }),
+  });
+}
+
+// --- Back Office: approval threshold setting ---
+
+export function useApprovalThreshold() {
+  return useQuery({ queryKey: ["expense-approval-threshold"], queryFn: getApprovalThreshold });
+}
+
+export function useSetApprovalThreshold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (amountMinor: MinorUnits) => setApprovalThreshold(amountMinor),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["expense-approval-threshold"] }),
   });
 }

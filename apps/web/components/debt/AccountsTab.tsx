@@ -110,7 +110,7 @@ export function AccountsTab() {
       render: (a) => {
         const pct = creditLimitUsagePercent(a.customer.balanceMinor, a.customer.creditLimitMinor);
         return (
-          <div className="w-full min-w-[140px]">
+          <div className="w-full">
             <div className="h-8 w-full overflow-hidden rounded bg-rule">
               <div className={clsx("h-full", pct >= 100 ? "bg-out" : pct >= 75 ? "bg-watch" : "bg-in")} style={{ width: `${Math.min(100, pct)}%` }} />
             </div>
@@ -143,7 +143,7 @@ export function AccountsTab() {
             </button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
-            <DropdownMenu.Content align="end" onClick={(e) => e.stopPropagation()} className="z-40 w-nav-collapsed min-w-[180px] rounded border border-rule bg-paper p-4 shadow-shelf">
+            <DropdownMenu.Content align="end" onClick={(e) => e.stopPropagation()} className="z-40 w-categories rounded border border-rule bg-paper p-4 shadow-shelf">
               <DropdownMenu.Item onSelect={() => setPaymentFor(a)} className="cursor-pointer rounded px-12 py-8 text-table text-ink outline-none hover:bg-floor">
                 Take payment
               </DropdownMenu.Item>

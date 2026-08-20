@@ -2,7 +2,7 @@ import type { MinorUnits } from "@operatoros/shared";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
 import { apiRequest, newIdempotencyKey, USE_MOCK_API } from "./config";
-import type { MatchMomoTransactionInput, MomoTransaction } from "./types";
+import type { MatchMomoTransactionInput, MomoProviderConnection, MomoTransaction } from "./types";
 
 export async function listMomoTransactions(): Promise<MomoTransaction[]> {
   if (USE_MOCK_API) return mockDelay(store.listMomoTransactions());
@@ -39,4 +39,21 @@ export async function requestMomoPayment(customerId: string, amountMinor: MinorU
     body: { customerId, amountMinor, phone },
     idempotencyKey: newIdempotencyKey(),
   });
+}
+
+// --- Back Office: provider connection (D.7, "Connect now" against the sandbox) ---
+
+export async function getMomoConnection(): Promise<MomoProviderConnection> {
+  if (USE_MOCK_API) return mockDelay(store.getMomoConnection());
+  return apiRequest<MomoProviderConnection>("GET", "/api/v1/momo/connection");
+}
+
+export async function connectMomo(merchantCode: string): Promise<MomoProviderConnection> {
+  if (USE_MOCK_API) return mockDelay(store.setMomoConnection("connected", merchantCode));
+  return apiRequest<MomoProviderConnection>("POST", "/api/v1/momo/connect", { body: { merchantCode }, idempotencyKey: newIdempotencyKey() });
+}
+
+export async function disconnectMomo(): Promise<MomoProviderConnection> {
+  if (USE_MOCK_API) return mockDelay(store.setMomoConnection("not_connected"));
+  return apiRequest<MomoProviderConnection>("POST", "/api/v1/momo/disconnect", { idempotencyKey: newIdempotencyKey() });
 }

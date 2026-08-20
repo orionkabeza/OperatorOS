@@ -15,7 +15,7 @@ const Counter = dynamic(() => import("../counter/Counter").then((m) => m.Counter
 const StockRoom = dynamic(() => import("../stock/StockRoom").then((m) => m.StockRoom), { ssr: false });
 const DebtBook = dynamic(() => import("../debt/DebtBook").then((m) => m.DebtBook), { ssr: false });
 const CashBox = dynamic(() => import("../cashbox/CashBox").then((m) => m.CashBox), { ssr: false });
-const Overview = dynamic(() => import("../overview/Overview").then((m) => m.Overview), { ssr: false });
+const BackOffice = dynamic(() => import("../overview/BackOffice").then((m) => m.BackOffice), { ssr: false });
 const CloseShopFlow = dynamic(
   () => import("../day/CloseShopFlow").then((m) => m.CloseShopFlow),
   { ssr: false },
@@ -61,7 +61,7 @@ export function ShopFloor() {
           {activeRoom === "stock-room" ? <StockRoom /> : null}
           {activeRoom === "debt-book" ? <DebtBook /> : null}
           {activeRoom === "cash-box" ? <CashBox /> : null}
-          {activeRoom === "back-office" ? <Overview /> : null}
+          {activeRoom === "back-office" ? <BackOffice /> : null}
           {!KNOWN_ROOMS.includes(activeRoom) ? <EmptyState statement={EMPTY_MESSAGES[activeRoom] ?? "Nothing here yet."} /> : null}
         </main>
       </div>

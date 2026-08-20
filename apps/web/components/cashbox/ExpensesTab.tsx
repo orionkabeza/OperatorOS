@@ -7,9 +7,17 @@ import { Button } from "@/components/design/Button";
 import { Card } from "@/components/design/Card";
 import { Input } from "@/components/design/Input";
 import { Money } from "@/components/design/Money";
-import { EXPENSE_APPROVAL_THRESHOLD_MINOR } from "@/lib/api/expenses";
 import { useMoneyLocations } from "@/lib/queries/cashbox";
-import { useApproveExpense, useCreateRecurringExpense, useExpenses, useRecordExpense, useRecurringExpenses, useRejectExpense, useToggleRecurringExpense } from "@/lib/queries/expenses";
+import {
+  useApprovalThreshold,
+  useApproveExpense,
+  useCreateRecurringExpense,
+  useExpenses,
+  useRecordExpense,
+  useRecurringExpenses,
+  useRejectExpense,
+  useToggleRecurringExpense,
+} from "@/lib/queries/expenses";
 import { useToastStore } from "@/lib/toast-store";
 import type { Expense, ExpenseCategory } from "@/lib/api/types";
 
@@ -28,6 +36,7 @@ export function ExpensesTab() {
   const { data: locations } = useMoneyLocations();
   const { data: expenses } = useExpenses();
   const { data: recurring } = useRecurringExpenses();
+  const { data: threshold } = useApprovalThreshold();
   const recordExpense = useRecordExpense();
   const approve = useApproveExpense();
   const reject = useRejectExpense();
@@ -42,7 +51,7 @@ export function ExpensesTab() {
   const [note, setNote] = useState("");
 
   const amountMinor = minorUnits(Math.round((Number.parseFloat(amountMajor) || 0) * 100));
-  const willNeedApproval = amountMinor >= EXPENSE_APPROVAL_THRESHOLD_MINOR;
+  const willNeedApproval = threshold !== undefined && amountMinor >= threshold;
 
   const pending = (expenses ?? []).filter((e) => e.status === "pending_approval");
   const others = (expenses ?? []).filter((e) => e.status !== "pending_approval");
@@ -94,7 +103,7 @@ export function ExpensesTab() {
           <input value={note} onChange={(e) => setNote(e.target.value)} className="h-control rounded border border-rule bg-paper px-12 text-body text-ink" />
         </label>
         {willNeedApproval ? (
-          <p className="mt-8 text-meta text-watch">This is above the RWF {(EXPENSE_APPROVAL_THRESHOLD_MINOR / 100).toLocaleString()} approval threshold and will need manager sign-off before it posts.</p>
+          <p className="mt-8 text-meta text-watch">This is above the RWF {((threshold ?? 0) / 100).toLocaleString()} approval threshold and will need manager sign-off before it posts.</p>
         ) : null}
         <Button variant="primary" className="mt-8" disabled={amountMinor <= 0 || !payee.trim()} disabledReason="Enter an amount and payee first." onClick={submit}>
           {willNeedApproval ? "Send for approval" : "Record expense"}

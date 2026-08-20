@@ -65,7 +65,7 @@ export function ReminderScheduleTab() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 gap-16 lg:grid-cols-[1fr_1fr]">
+      <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
         <div className="flex flex-col gap-8">
           {(schedule?.steps ?? []).map((step) => (
             <button
