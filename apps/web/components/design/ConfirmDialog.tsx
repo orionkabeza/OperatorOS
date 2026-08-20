@@ -46,10 +46,14 @@ export function ConfirmDialog({
 
           {typedConfirmation ? (
             <div className="mt-16 flex flex-col gap-4">
-              <label className="text-micro font-semibold uppercase tracking-tracked text-ink-soft">
+              <label
+                htmlFor="confirm-typed-input"
+                className="text-micro font-semibold uppercase tracking-tracked text-ink-soft"
+              >
                 Type &quot;{typedConfirmation}&quot; to confirm
               </label>
               <input
+                id="confirm-typed-input"
                 autoComplete="off"
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}

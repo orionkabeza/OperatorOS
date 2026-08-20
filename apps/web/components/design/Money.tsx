@@ -13,10 +13,20 @@ const SIZE_CLASS = {
 export function Money({
   amount,
   size = "body",
+  surface = "light",
   className,
 }: {
   amount: MinorUnits;
   size?: keyof typeof SIZE_CLASS;
+  /**
+   * `--ink-soft` (the "RWF" prefix's color) is calibrated against light
+   * (`--paper`/`--floor`) backgrounds — 2.13:1 against `--steel`, caught by
+   * an axe scan on the Tally Rail, well under WCAG AA's 4.5:1. `surface`
+   * lets a dark-background caller (Tally Rail, top nav) opt into
+   * `white/60`, which does pass — same pattern the Tally Rail's own labels
+   * already used.
+   */
+  surface?: "light" | "dark";
   className?: string;
 }) {
   const { negative, figure } = toRwfParts(amount);
@@ -25,8 +35,15 @@ export function Money({
       className={clsx("font-mono whitespace-nowrap", className)}
       aria-label={`RWF ${negative ? "minus " : ""}${figure}`}
     >
-      <span className="text-meta text-ink-soft">RWF </span>
-      <span className={clsx(SIZE_CLASS[size], negative ? "text-out" : "text-ink")}>
+      <span className={clsx("text-meta", surface === "dark" ? "text-white/60" : "text-ink-soft")}>
+        RWF{" "}
+      </span>
+      <span
+        className={clsx(
+          SIZE_CLASS[size],
+          negative ? "text-out" : surface === "dark" ? "text-white" : "text-ink",
+        )}
+      >
         {negative ? "-" : ""}
         {figure}
       </span>

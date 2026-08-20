@@ -26,6 +26,18 @@ const config: Config = {
       in: "#1F6F4A",
       out: "#B3402E",
       watch: "#8A6A17",
+      // Lighter/desaturated variants of --in/--out/--watch for use on dark
+      // (steel/steel-deep) surfaces — the plain tokens above are calibrated
+      // against --paper/--floor and fail WCAG AA there (an axe scan on the
+      // Tally Rail confirmed --ink-soft at 2.13:1 against --steel, well
+      // under the 4.5:1 minimum; --ink/--out/--watch are all similarly
+      // dark-on-dark). Not invented here — pulled from the exact hex values
+      // design-reference/debt-book-stock-room.dc.html already uses for
+      // money-direction figures on its dark header band, so this is the
+      // verified design intent, not a new color decision.
+      "in-dark": "#6FBF95",
+      "out-dark": "#E38A78",
+      "watch-dark": "#E8C56B",
     },
     fontFamily: {
       display: ["var(--font-archivo)", "sans-serif"],

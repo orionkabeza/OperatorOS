@@ -67,7 +67,10 @@ export function Table<Row extends { id: string }>({
           </Button>
         ) : null}
       </div>
-      <div className="scroll-x-safe">
+      {/* tabIndex + role make this a keyboard-focusable scroll region when its
+          content overflows — axe's scrollable-region-focusable rule caught
+          this missing at 375px width, where the table genuinely scrolls. */}
+      <div className="scroll-x-safe" tabIndex={0} role="region" aria-label="Table, scroll horizontally for more columns">
         <table className="w-full min-w-full border-collapse">
           <thead>
             <tr className="bg-steel">

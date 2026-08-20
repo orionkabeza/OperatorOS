@@ -21,16 +21,24 @@ export function TallyRail({ activeKey }: { activeKey?: TallyKey | undefined }) {
   const { takenToday, onCreditToday, inTheTill, lowStockCount } = useTallyStore();
 
   const values: Record<TallyKey, React.ReactNode> = {
-    taken: <Money amount={takenToday} size="card-title" />,
-    credit: <Money amount={onCreditToday} size="card-title" />,
-    till: <Money amount={inTheTill} size="card-title" />,
-    stock: <Qty value={lowStockCount} unit={lowStockCount === 1 ? "item" : "items"} />,
+    taken: <Money amount={takenToday} size="card-title" surface="dark" />,
+    credit: <Money amount={onCreditToday} size="card-title" surface="dark" />,
+    till: <Money amount={inTheTill} size="card-title" surface="dark" />,
+    stock: (
+      <Qty
+        value={lowStockCount}
+        unit={lowStockCount === 1 ? "item" : "items"}
+        surface="dark"
+        tone={lowStockCount > 0 ? "low" : "normal"}
+      />
+    ),
   };
 
   return (
     <div
       role="status"
       aria-label="Today's figures"
+      tabIndex={0}
       className="scroll-x-safe sticky top-rail z-20 flex h-rail items-stretch gap-24 bg-steel px-24"
     >
       {FIGURES.map(({ key, label }) => (

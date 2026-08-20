@@ -132,8 +132,8 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
               {wrong ? (
                 <p className="text-meta text-out">
                   That PIN doesn&apos;t match this number.
-                  {attemptsRemaining <= 2 && attemptsRemaining > 0
-                    ? ` ${attemptsRemaining} ${attemptsRemaining === 1 ? "try" : "tries"} left before this device is locked for 15 minutes.`
+                  {attemptsRemaining === 1
+                    ? ` ${attemptsRemaining} try left before this device is locked for 15 minutes.`
                     : ""}
                 </p>
               ) : null}
