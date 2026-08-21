@@ -26,6 +26,15 @@ from operatoros_api.security.tokens import TokenError, decode_access_token
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
+# The web frontend (apps/web) never handles a raw access token in
+# client-side JS -- its own server-side session route handlers
+# (app/session/*/route.ts) set this as an httpOnly cookie instead, so an
+# XSS bug in the frontend can't exfiltrate it. A future non-browser
+# client (mobile app, API integration) still authenticates the ordinary
+# way, via the Authorization header -- this is an additional accepted
+# source, not a replacement. See docs/DECISIONS.md.
+ACCESS_TOKEN_COOKIE_NAME = "operatoros_access_token"
+
 
 @dataclass
 class RequestContext:
@@ -50,12 +59,14 @@ async def get_redis(request: Request):
 
 
 async def get_current_context(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> AsyncIterator[RequestContext]:
-    if credentials is None:
+    token = credentials.credentials if credentials else request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+    if token is None:
         raise HTTPException(status_code=401, detail="Not authenticated.")
     try:
-        claims = decode_access_token(credentials.credentials)
+        claims = decode_access_token(token)
     except TokenError:
         raise HTTPException(status_code=401, detail="Not authenticated.") from None
 

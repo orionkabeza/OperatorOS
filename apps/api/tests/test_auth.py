@@ -14,6 +14,7 @@ import operatoros_api.db as db_module
 from operatoros_api.security.crypto import encrypt_secret
 from operatoros_api.seed import create_user
 from tests.conftest import SeededTenant
+from tests.helpers import auth_headers
 
 
 @pytest.mark.asyncio
@@ -151,6 +152,30 @@ async def test_totp_challenge_then_verify_issues_real_tokens(
     )
     assert me_resp.status_code == 200
     assert me_resp.json()["id"] == totp_user_id
+
+
+@pytest.mark.asyncio
+async def test_current_context_accepts_an_access_token_cookie(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
+    """The web frontend never puts a raw access token in client-side JS --
+    its Next.js session route handlers set it as an httpOnly cookie
+    instead (api/deps.py::ACCESS_TOKEN_COOKIE_NAME), so `get_current_context`
+    must accept it from there too, not just the Authorization header."""
+    headers = await auth_headers(client, tenant_a)
+    token = headers["Authorization"].removeprefix("Bearer ")
+
+    cookie_resp = await client.get("/api/v1/users/me", cookies={"operatoros_access_token": token})
+    assert cookie_resp.status_code == 200, cookie_resp.text
+    assert cookie_resp.json()["id"] == tenant_a.owner.id
+
+    no_auth_resp = await client.get("/api/v1/users/me")
+    assert no_auth_resp.status_code == 401
+
+    bad_cookie_resp = await client.get(
+        "/api/v1/users/me", cookies={"operatoros_access_token": "not-a-real-token"}
+    )
+    assert bad_cookie_resp.status_code == 401
 
 
 @pytest.mark.asyncio
