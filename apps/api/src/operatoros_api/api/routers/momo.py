@@ -502,12 +502,15 @@ async def match_transaction(
             raise HTTPException(
                 status_code=422, detail="location_id is required for this match type."
             )
+        invoices = await open_invoices_for_customer(ctx.session, ctx.business_id, body.customer_id)
         if body.matched_to_type == "invoice" and body.sale_id:
+            if body.sale_id not in {inv.sale_id for inv in invoices}:
+                raise HTTPException(
+                    status_code=422,
+                    detail="sale_id is not an open invoice for this customer.",
+                )
             allocations = [(body.sale_id, txn.amount_minor)]
         else:
-            invoices = await open_invoices_for_customer(
-                ctx.session, ctx.business_id, body.customer_id
-            )
             allocations, _unallocated = auto_allocate(invoices, txn.amount_minor)
 
         try:
