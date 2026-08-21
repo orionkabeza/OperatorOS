@@ -115,6 +115,32 @@ async def open_invoices_for_business(session, business_id: str) -> dict[str, lis
 async def open_invoices_for_customer(
     session, business_id: str, customer_id: str
 ) -> list[OpenInvoice]:
+    """Every real caller of this function (take-payment, MoMo settlement,
+    pay-link settlement -- see module docstring) uses the result to DECIDE
+    how to allocate a payment, then writes `payment_allocations` rows based
+    on that decision later in the same request. Without a lock here, two
+    concurrent callers for the same customer (e.g. two independent
+    take-payment requests -- not a retried request, a genuine race) can
+    both read the same stale `remaining_minor` on an invoice and both fully
+    allocate a payment to it, over-allocating that invoice by the second
+    payment's full amount -- the same "check-then-write across a request
+    boundary without locking the read" shape
+    api/routers/sales.py::_check_stock's `.with_for_update()` fix closes for
+    stock. `SELECT ... FOR UPDATE` can't be combined with the GROUP BY
+    aggregate below (Postgres rejects that combination outright), so the
+    lock is acquired first via a plain, ungrouped `SELECT Sale.id ...
+    FOR UPDATE` over this customer's sales -- the second transaction blocks
+    here until the first commits (including its `payment_allocations`
+    insert), then its own subsequent read of `payment_allocations` sees
+    that already-committed state instead of a stale one.
+    """
+    sale_ids_result = await session.execute(
+        select(Sale.id)
+        .where(Sale.business_id == business_id, Sale.customer_id == customer_id)
+        .with_for_update()
+    )
+    sale_ids = [row[0] for row in sale_ids_result.all()]
+
     sale_result = await session.execute(
         select(
             Sale.id,
@@ -131,10 +157,6 @@ async def open_invoices_for_customer(
         )
         .group_by(Sale.id, Sale.customer_id, Sale.created_at, Sale.due_date_at)
     )
-    sale_ids_result = await session.execute(
-        select(Sale.id).where(Sale.business_id == business_id, Sale.customer_id == customer_id)
-    )
-    sale_ids = [row[0] for row in sale_ids_result.all()]
     alloc_result = await session.execute(
         select(PaymentAllocation.sale_id, func.sum(PaymentAllocation.amount_minor))
         .where(

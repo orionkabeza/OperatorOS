@@ -6,6 +6,7 @@ to the customer's current terms.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -505,3 +506,82 @@ async def test_write_off_above_threshold_requires_exact_customer_name(
         json={"reason": "Vanished.", "confirm_customer_name": "Big Debtor Ltd"},
     )
     assert ok_resp.status_code == 201, ok_resp.text
+
+
+@pytest.mark.asyncio
+async def test_concurrent_take_payments_do_not_double_allocate_the_same_invoice(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
+    """Two genuinely independent take-payment calls (different
+    Idempotency-Keys -- e.g. a cashier at the counter and someone settling
+    the same customer's account by phone at the same instant), each paying
+    off the customer's ONE open invoice in full, racing each other.
+
+    `_open_invoices_for_customer` (debt_ageing.py) reads `sales` +
+    `payment_allocations` with no row lock before the allocation decision is
+    made, unlike the stock-check race Phase 1 already closed with
+    `.with_for_update()` on `product_locations`
+    (api/routers/sales.py::_check_stock`). If both requests read the
+    invoice's `remaining_minor` before either has written its
+    `PaymentAllocation` row, both can allocate the full amount to the SAME
+    invoice: exactly the same "check-then-write across a request boundary
+    without locking the read" shape.
+
+    Correct behaviour, matching
+    tests/test_sales_atomicity.py::test_concurrent_sales_for_the_last_unit_do_not_oversell:
+    exactly one payment fully allocates to the invoice and the other is
+    cleanly rejected (422, nothing left open to allocate against) --
+    never two 201s that together over-allocate the same invoice.
+    """
+    headers = await auth_headers(client, tenant_a)
+    await _open_day(client, headers, tenant_a)
+    product_id = await _create_product(client, headers, selling_price_minor=100000)
+    await _receive_stock(client, headers, tenant_a, product_id, "5.0000")
+    customer_id = await _create_customer(client, headers, credit_limit_minor=1000000)
+
+    sale_id = await _credit_sale(
+        client,
+        headers,
+        tenant_a,
+        product_id=product_id,
+        customer_id=customer_id,
+        amount_minor=118000,
+    )
+
+    async def fire(idem_key: str):
+        return await client.post(
+            f"/api/v1/debt/accounts/{customer_id}/take-payment",
+            headers={**headers, "Idempotency-Key": idem_key},
+            json={
+                "location_id": tenant_a.location.id,
+                "amount_minor": 118000,
+                "method": "cash",
+                "allocation_mode": "auto",
+            },
+        )
+
+    resp1, resp2 = await asyncio.gather(
+        fire(f"pay-race-a-{uuid.uuid4().hex}"), fire(f"pay-race-b-{uuid.uuid4().hex}")
+    )
+
+    statuses = sorted([resp1.status_code, resp2.status_code])
+    assert statuses == [201, 422], (
+        "exactly one of the two concurrent payments must succeed (fully allocating the "
+        "customer's one open invoice) and the other must be cleanly rejected for having "
+        f"nothing left to allocate against -- got {resp1.status_code} and {resp2.status_code}"
+    )
+
+    async with tenant_scoped_session(tenant_a.business.id) as session:
+        pa_result = await session.execute(
+            select(PaymentAllocation).where(
+                PaymentAllocation.business_id == tenant_a.business.id,
+                PaymentAllocation.sale_id == sale_id,
+            )
+        )
+        rows = list(pa_result.scalars())
+        total_allocated = sum(r.amount_minor for r in rows)
+        sale = await session.get(Sale, sale_id)
+        assert total_allocated <= sale.total_minor, (
+            f"invoice {sale_id} (total {sale.total_minor}) was over-allocated: "
+            f"payment_allocations sum to {total_allocated} across {len(rows)} row(s)"
+        )
