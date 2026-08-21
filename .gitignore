@@ -22,6 +22,9 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Celery beat schedule DB — runtime state written on web-01, never committed
+celerybeat-schedule.db
+
 # Env / secrets
 .env
 .env*.local
