@@ -16,17 +16,23 @@ export function ConfirmDialog({
   confirmLabel,
   typedConfirmation,
   onConfirm,
+  children,
+  confirmDisabled,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   message: string;
   confirmLabel: string;
-  typedConfirmation?: string;
+  typedConfirmation?: string | undefined;
   onConfirm: () => void;
+  /** Optional extra fields between the message and the typed-confirmation input — e.g. a required reason field (D.6.4 write-off flow). Kept generic rather than baking a "reason" field into this primitive, since not every confirm dialog needs one. */
+  children?: React.ReactNode | undefined;
+  /** Extra gate on top of the typed-confirmation check — e.g. "a reason has been entered." */
+  confirmDisabled?: boolean | undefined;
 }) {
   const [typed, setTyped] = useState("");
-  const locked = Boolean(typedConfirmation) && typed !== typedConfirmation;
+  const locked = (Boolean(typedConfirmation) && typed !== typedConfirmation) || Boolean(confirmDisabled);
 
   return (
     <Dialog.Root
@@ -43,6 +49,8 @@ export function ConfirmDialog({
             {title}
           </Dialog.Title>
           <Dialog.Description className="mt-8 text-body text-ink">{message}</Dialog.Description>
+
+          {children ? <div className="mt-16">{children}</div> : null}
 
           {typedConfirmation ? (
             <div className="mt-16 flex flex-col gap-4">
@@ -69,7 +77,13 @@ export function ConfirmDialog({
             <Button
               variant="danger"
               disabled={locked}
-              disabledReason={locked ? "Type the confirmation text exactly to continue." : undefined}
+              disabledReason={
+                locked
+                  ? confirmDisabled && (!typedConfirmation || typed === typedConfirmation)
+                    ? "Fill in the required field above to continue."
+                    : "Type the confirmation text exactly to continue."
+                  : undefined
+              }
               onClick={() => {
                 onConfirm();
                 onOpenChange(false);

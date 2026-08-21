@@ -29,3 +29,18 @@ export const VARIANCE_NOTIFY_THRESHOLD_MINOR = 10_000 * 100; // RWF 10,000
  */
 export const BUSINESS_VAT_REGISTERED = false;
 export const VAT_RATE_PERCENT = 18;
+
+/**
+ * D.6.4 — write-offs above this amount require the manager to type the
+ * customer's exact name into ConfirmDialog's `typedConfirmation` before the
+ * write-off is allowed; below it, the reason field alone is required. Same
+ * "Settings will own this for real" caveat as the other thresholds above.
+ */
+export const WRITE_OFF_TYPED_CONFIRMATION_THRESHOLD_MINOR = 500_000 * 100; // RWF 500,000
+
+/**
+ * D.6.4 — back-dating a payment's date away from "today" is permission-
+ * gated the same way the credit-limit override is (manager PIN), and always
+ * requires a reason once unlocked.
+ */
+export const BACKDATE_MANAGER_PIN = DEMO_MANAGER_PIN;

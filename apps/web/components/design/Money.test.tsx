@@ -33,4 +33,24 @@ describe("Money", () => {
     render(<Money amount={minorUnits(1_00)} />);
     expect(screen.getByLabelText("RWF 1").className).toContain("font-mono");
   });
+
+  it("uses the dark-surface emphasis variant on a dark surface, not the light one (WCAG AA — Debt Book's dark header band)", () => {
+    render(<Money amount={minorUnits(500_00)} surface="dark" emphasis="out" />);
+    const figure = screen.getByText("500");
+    expect(figure.className).toContain("text-out-dark");
+    expect(figure.className).not.toBe("text-out");
+  });
+
+  it("uses the dark-surface negative variant on a dark surface", () => {
+    render(<Money amount={minorUnits(-500_00)} surface="dark" />);
+    const figure = screen.getByText("-500");
+    expect(figure.className).toContain("text-out-dark");
+  });
+
+  it("still uses the plain light emphasis variant on the default light surface", () => {
+    render(<Money amount={minorUnits(500_00)} emphasis="out" />);
+    const figure = screen.getByText("500");
+    expect(figure.className).toContain("text-out");
+    expect(figure.className).not.toContain("text-out-dark");
+  });
 });

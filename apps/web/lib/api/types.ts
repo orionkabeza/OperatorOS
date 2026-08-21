@@ -126,6 +126,8 @@ export interface Customer {
   balanceMinor: MinorUnits;
   termsDays: number;
   onHold: boolean;
+  /** Business/site name distinct from the contact's own name (e.g. "Jean Bosco Habimana" / "Habimana Construction") — Phase 2, per design-reference/debt-book-stock-room.dc.html's `trade` field. Optional: not every customer is a business. */
+  trade?: string | undefined;
 }
 
 export interface CreateCustomerInput {
@@ -555,4 +557,351 @@ export interface OnboardingState {
   staff: OnboardingStaffInvite[];
   openingBalances: Partial<OnboardingOpeningBalances>;
   completed: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Debt Book (D.6)
+//
+// Per docs/DECISIONS.md "Phase 2: invoices modeled as credit-bearing sales":
+// there is no separate Invoice entity server-side — a credit-bearing Sale
+// *is* the invoice. The frontend's `Invoice` shape below is the read model
+// the Debt Book screens consume (whether it's later served by a real
+// `/api/v1/debt/*` endpoint reading `sales` + `payment_allocations`, or by
+// the mock store standing in for that today) — never treated as a second
+// source of truth to write to directly.
+// ---------------------------------------------------------------------------
+
+export type InvoiceStatus = "open" | "overdue" | "paid";
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string; // e.g. "INV-2977" — the underlying sale's receipt number, credit-book-formatted
+  customerId: string;
+  saleId: string;
+  issuedAt: Iso8601;
+  /** Snapshotted at sale time (occurred_at + customer.termsDays at that moment) — never recomputed from the customer's current terms. */
+  dueDateAt: Iso8601;
+  totalMinor: MinorUnits;
+  /** totalMinor - sum(payment_allocations for this invoice). */
+  remainingMinor: MinorUnits;
+  status: InvoiceStatus;
+}
+
+export type StatementEntryKind = "invoice" | "payment" | "write_off";
+
+export interface StatementEntry {
+  id: string;
+  customerId: string;
+  date: Iso8601;
+  kind: StatementEntryKind;
+  ref: string; // "INV-2841" or "PAY-1190"
+  detail: string;
+  debitMinor: MinorUnits; // taken on credit (0 for payment rows)
+  creditMinor: MinorUnits; // paid / written off (0 for invoice rows)
+  runningBalanceMinor: MinorUnits;
+}
+
+export interface AllocationInput {
+  invoiceId: string;
+  amountMinor: MinorUnits;
+}
+
+export interface TakePaymentInput {
+  customerId: string;
+  amountMinor: MinorUnits;
+  method: PaymentMethod;
+  /** Present only when method needs one (momo/airtel/bank/cheque transaction ref). */
+  transactionRef?: string | undefined;
+  moneyLocationAccountKey: string;
+  allocationMode: "auto" | "manual";
+  /** Required when allocationMode is "manual"; ignored (server computes) when "auto". */
+  manualAllocations?: AllocationInput[] | undefined;
+  /** Back-dating the payment date away from "now" — permission-gated (D.6.4), requires a reason when used. */
+  backdatedTo?: Iso8601 | undefined;
+  backdateReason?: string | undefined;
+}
+
+export interface TakePaymentResult {
+  paymentId: string;
+  allocations: AllocationInput[];
+  unallocatedMinor: MinorUnits;
+  customer: Customer;
+}
+
+export interface WriteOffInput {
+  customerId: string;
+  amountMinor: MinorUnits;
+  reason: string;
+  /** Required (typed exact customer name) above a configurable threshold — enforced client-side via ConfirmDialog's `typedConfirmation`, re-validated by the real backend. */
+  typedConfirmationName?: string | undefined;
+}
+
+export interface DebtAccountSummary {
+  customer: Customer;
+  oldestDueDateAt: string | null;
+  oldestDaysOverdue: number | null;
+  status: "current" | "due_this_week" | "overdue" | "over_limit";
+  /** True if this account has had any amount written off — the customer stays visible in the Debt Book, chip-marked, per D.6's write-off flow requirement (plan §5: "appears as a loss with the customer still visible and chip-marked"). */
+  hasWriteOff: boolean;
+}
+
+export interface DebtBookHeader {
+  owedToYouMinor: MinorUnits;
+  owedToYouAccountCount: number;
+  overdueMinor: MinorUnits;
+  overdueAccountCount: number;
+  overdueOldestDays: number;
+  dueThisWeekMinor: MinorUnits;
+  dueThisWeekInvoiceCount: number;
+  collectedThisMonthMinor: MinorUnits;
+  collectedThisMonthPercentOfCredit: number;
+  ageing: Record<"current" | "1-30" | "31-60" | "61-90" | "90+", MinorUnits>;
+}
+
+export type ChaseAction = "call" | "reminder_sent" | "snoozed";
+
+export interface ChaseQueueItem {
+  customer: Customer;
+  balanceMinor: MinorUnits;
+  daysOverdue: number;
+  nextReminderStep: string | null;
+  lastContactAt: Iso8601 | null;
+  snoozedUntil: Iso8601 | null;
+}
+
+export type ReminderChannel = "whatsapp" | "sms" | "call_task";
+
+export interface ReminderScheduleStep {
+  id: string;
+  order: number;
+  /** Negative = days before due date, positive = days after. */
+  offsetDays: number;
+  tone: string; // short human label, e.g. "Friendly nudge", "Final before credit hold"
+  channels: ReminderChannel[];
+  template: string;
+  enabled: boolean;
+}
+
+export interface ReminderSchedule {
+  id: string;
+  businessId: string;
+  steps: ReminderScheduleStep[];
+  /** Approval mode: reminders are queued into a daily digest and require an explicit "Send N reminders" click rather than sending automatically. */
+  approvalMode: boolean;
+  paused: boolean;
+  quietHoursStart: string; // "HH:MM"
+  quietHoursEnd: string;
+  maxPerCustomerPerWeek: number;
+}
+
+export interface ReminderDigestItem {
+  id: string;
+  customer: Customer;
+  step: ReminderScheduleStep;
+  renderedMessage: string;
+  checked: boolean;
+}
+
+export type ContactLogChannel = "whatsapp" | "sms" | "call" | "manual_note";
+
+export interface ContactLogEntry {
+  id: string;
+  customerId: string;
+  channel: ContactLogChannel;
+  step: string | null;
+  sentAt: Iso8601;
+  delivered: boolean | null;
+  read: boolean | null;
+  note: string | null;
+  loggedBy: string;
+}
+
+export interface CustomerSegmentFilterSpec {
+  minBalanceMinor?: MinorUnits;
+  maxBalanceMinor?: MinorUnits;
+  status?: DebtAccountSummary["status"];
+  onHold?: boolean;
+  /** Credit-limit usage percent (balance/limit × 100) at or above this value — "near credit limit" style segments. */
+  minUsagePercent?: number;
+}
+
+export interface CustomerSegment {
+  id: string;
+  name: string;
+  filterSpec: CustomerSegmentFilterSpec;
+  /** Computed live against the current customer list — never materialised/stale, per docs/plans/phase-2.md §0.7. */
+  memberCount: number;
+}
+
+export interface BroadcastSend {
+  id: string;
+  segmentId: string | null;
+  segmentName: string;
+  message: string;
+  sentAt: Iso8601;
+  sentBy: string;
+  recipientCount: number;
+  deliveredCount: number;
+  readCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Cash Box (D.7.1–D.7.5)
+// ---------------------------------------------------------------------------
+
+export type MoneyLocationKind = "till" | "momo" | "airtel" | "bank" | "card";
+
+export interface MoneyLocation {
+  id: string;
+  accountKey: string; // matches money_location_balance's account_key (e.g. "till", "momo", "bank")
+  displayName: string; // "BANK (BK ••4192)"
+  kind: MoneyLocationKind;
+  balanceMinor: MinorUnits;
+  todaysMovementMinor: MinorUnits;
+  connectionStatus: "manual" | "connected";
+  lastSyncedAt: Iso8601 | null;
+}
+
+export interface UpdateBalanceInput {
+  accountKey: string;
+  countedMinor: MinorUnits;
+  reason?: string | undefined;
+}
+
+export type MoneyMovementType = "sale" | "payment_received" | "expense" | "transfer" | "manual_adjustment";
+
+export interface MoneyMovement {
+  id: string;
+  accountKey: string;
+  accountDisplayName: string;
+  type: MoneyMovementType;
+  amountMinor: MinorUnits; // signed
+  balanceAfterMinor: MinorUnits;
+  userId: string;
+  userName: string;
+  reference: string | null;
+  timestamp: Iso8601;
+}
+
+export interface MoneyMovementFilters {
+  accountKey?: string | undefined;
+  type?: MoneyMovementType | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  userId?: string | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Mobile money (D.7.3, per docs/DECISIONS.md's sandbox-provider seam)
+// ---------------------------------------------------------------------------
+
+export type MomoDirection = "in" | "out";
+export type MomoTransactionStatus = "unmatched" | "matched" | "ignored";
+
+export interface MomoTransaction {
+  id: string;
+  provider: "mtn" | "airtel";
+  externalId: string;
+  phone: string;
+  amountMinor: MinorUnits;
+  direction: MomoDirection;
+  occurredAt: Iso8601;
+  status: MomoTransactionStatus;
+  /** Set once matched — which customer/sale/expense this transaction was reconciled against. */
+  matchedCustomerId: string | null;
+  matchedCustomerName: string | null;
+  matchConfidence: "high" | "medium" | "low" | null;
+}
+
+export interface MomoReconciliationSummary {
+  unmatchedTotalMinor: MinorUnits;
+  unmatchedCount: number;
+  transactions: MomoTransaction[];
+}
+
+export interface MatchMomoTransactionInput {
+  momoTransactionId: string;
+  customerId: string;
+}
+
+export interface RequestMomoPaymentInput {
+  customerId: string;
+  amountMinor: MinorUnits;
+  phone: string;
+}
+
+export interface MomoProviderConnection {
+  provider: "mtn" | "airtel";
+  status: "connected" | "not_connected";
+  merchantCode: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Expenses (D.7.4)
+// ---------------------------------------------------------------------------
+
+export type ExpenseStatus = "draft" | "pending_approval" | "approved" | "rejected" | "posted";
+export type ExpenseCategory = "rent" | "utilities" | "transport" | "supplies" | "salaries" | "maintenance" | "other";
+
+export interface Expense {
+  id: string;
+  amountMinor: MinorUnits;
+  category: ExpenseCategory;
+  moneyLocationAccountKey: string;
+  payee: string;
+  date: string; // YYYY-MM-DD
+  note: string;
+  receiptPhotoUrl: string | null;
+  ocrStatus: "not_attempted";
+  status: ExpenseStatus;
+  approvedBy: string | null;
+  createdBy: string;
+  createdAt: Iso8601;
+}
+
+export interface RecordExpenseInput {
+  amountMinor: MinorUnits;
+  category: ExpenseCategory;
+  moneyLocationAccountKey: string;
+  payee: string;
+  date: string;
+  note?: string | undefined;
+  receiptPhotoUrl?: string | null | undefined;
+}
+
+export interface RecurringExpense {
+  id: string;
+  template: RecordExpenseInput;
+  interval: "weekly" | "monthly";
+  nextRunDate: string; // YYYY-MM-DD
+  active: boolean;
+}
+
+export interface ApprovalThreshold {
+  amountMinor: MinorUnits;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Pay link (public, unauthenticated, per docs/DECISIONS.md §0.5)
+// ---------------------------------------------------------------------------
+
+export type PayLinkStatus = "pending" | "paid" | "expired" | "invalid";
+
+export interface PayLinkDetails {
+  status: PayLinkStatus;
+  businessName: string;
+  customerName: string;
+  amountMinor: MinorUnits;
+  invoiceRef: string | null;
+  expiresAt: Iso8601 | null;
+}
+
+export interface SubmitPayLinkInput {
+  token: string;
+  method: "momo" | "airtel";
+  phone: string;
+}
+
+export interface SubmitPayLinkResult {
+  status: "pending_confirmation" | "paid";
 }

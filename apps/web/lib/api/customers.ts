@@ -1,6 +1,6 @@
-import { minorUnits } from "@operatoros/shared";
-import { getDb, mockDelay } from "../mock/store";
-import { apiRequest, USE_MOCK_API } from "./config";
+import { minorUnits, type MinorUnits } from "@operatoros/shared";
+import { getDb, mockDelay, setCustomerCreditLimit, setCustomerHold } from "../mock/store";
+import { apiRequest, newIdempotencyKey, USE_MOCK_API } from "./config";
 import type { CreateCustomerInput, Customer } from "./types";
 
 export async function listCustomers(search?: string): Promise<Customer[]> {
@@ -38,4 +38,16 @@ export async function createCustomer(input: CreateCustomerInput): Promise<Custom
     return mockDelay(customer);
   }
   return apiRequest<Customer>("POST", "/api/v1/customers", { body: input });
+}
+
+/** D.6 row action — "Put on hold" / "Take off hold". */
+export async function updateCustomerHold(id: string, onHold: boolean): Promise<Customer> {
+  if (USE_MOCK_API) return mockDelay(setCustomerHold(id, onHold));
+  return apiRequest<Customer>("POST", `/api/v1/customers/${id}/hold`, { body: { onHold }, idempotencyKey: newIdempotencyKey() });
+}
+
+/** D.6 row action — "Adjust limit". */
+export async function updateCustomerCreditLimit(id: string, creditLimitMinor: MinorUnits): Promise<Customer> {
+  if (USE_MOCK_API) return mockDelay(setCustomerCreditLimit(id, creditLimitMinor));
+  return apiRequest<Customer>("POST", `/api/v1/customers/${id}/credit-limit`, { body: { creditLimitMinor }, idempotencyKey: newIdempotencyKey() });
 }
