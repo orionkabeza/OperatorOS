@@ -23,6 +23,7 @@ dependencies = [
     "python-multipart>=0.0.12",
     "structlog>=24.4,<25.0",
     "cryptography>=50.0,<51.0",
+    "openpyxl>=3.1,<4.0",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,6 @@ dev = [
     "freezegun>=1.5,<2.0",
     "types-redis",
     "pgserver>=0.1.4,<1.0",
-    "openpyxl>=3.1,<4.0",
 ]
 
 [build-system]
