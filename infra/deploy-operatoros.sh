@@ -72,6 +72,45 @@ cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
 [ -d apps/web/public ] && cp -r apps/web/public apps/web/.next/standalone/apps/web/public || mkdir -p apps/web/.next/standalone/apps/web/public
 
 deployed_commit=$(git rev-parse --short HEAD)
+deployed_sha=$(git rev-parse HEAD)
 sudo chown -R www-data:www-data /opt/operatoros-monorepo
 sudo systemctl restart operatoros-api operatoros-worker operatoros
+
+# --- post-deploy verification -----------------------------------------------
+# A deploy that builds cleanly and restarts cleanly can STILL be serving
+# stale code: web-02's operatoros.service once had WorkingDirectory pointed
+# at a leftover /opt/operatoros-monorepo-web/ that this script never touches,
+# so every deploy "succeeded" while the box kept serving a frozen build for
+# hours -- and because the LB alternates between boxes, only about half of
+# real requests were affected, which is exactly the kind of thing that hides
+# from a single smoke check. Restarting a service proves the process came up;
+# it does NOT prove the process is running the code we just built. So assert
+# it: next.config.mjs pins generateBuildId to the git SHA, meaning the SHA we
+# just deployed MUST appear in the HTML the running server returns. If it
+# doesn't, fail loudly here rather than letting CI go green over a silently
+# stale box.
+verify_url_contains() {
+  local url="$1" needle="$2" label="$3" attempt
+  for attempt in $(seq 1 20); do
+    if curl -fsS --max-time 5 "$url" 2>/dev/null | grep -qF "$needle"; then
+      echo "[deploy]   ok: $label"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "[deploy] FAILED: $label -- '$needle' not found at $url after 20s" >&2
+  return 1
+}
+
+echo "[deploy] verifying $(hostname) actually serves $deployed_commit ..."
+verify_url_contains "http://127.0.0.1:3001/" "$deployed_sha" "web is serving the just-built bundle"
+verify_url_contains "http://127.0.0.1:8000/health" '"status":"ok"' "api is healthy"
+# The mock-data fallback (USE_MOCK_API) is invisible in a 200 response and
+# was itself a live production bug once -- catch it by name.
+if curl -fsS --max-time 5 http://127.0.0.1:3001/ | grep -qF 'Kigali Hardware'; then
+  echo "[deploy] FAILED: web is serving MOCK data -- NEXT_PUBLIC_API_BASE_URL was not set at build time" >&2
+  exit 1
+fi
+echo "[deploy]   ok: web is serving real (non-mock) data"
+
 echo "[deploy] operatoros updated to $deployed_commit on $(hostname)"
