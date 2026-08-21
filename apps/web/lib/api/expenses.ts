@@ -1,7 +1,7 @@
 import { minorUnits, type MinorUnits } from "@operatoros/shared";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
 import type { z } from "zod";
 import type { Expense, ExpenseCategory, RecordExpenseInput, RecurringExpense } from "./types";
@@ -67,7 +67,7 @@ export async function recordExpense(input: RecordExpenseInput): Promise<Expense>
       amount_minor: input.amountMinor,
       category: input.category,
       expense_date: input.date,
-      location_id: DEFAULT_LOCATION_ID,
+      location_id: await getDefaultLocationId(),
       money_location: input.moneyLocationAccountKey,
       note: input.note ?? null,
       payee: input.payee,
@@ -125,7 +125,7 @@ export async function createRecurringExpense(template: RecordExpenseInput, inter
       amount_minor: template.amountMinor,
       category: template.category,
       interval,
-      location_id: DEFAULT_LOCATION_ID,
+      location_id: await getDefaultLocationId(),
       money_location: template.moneyLocationAccountKey,
       next_run_date: template.date,
       note: template.note ?? null,

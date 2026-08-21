@@ -1,5 +1,5 @@
 import type { MinorUnits } from "@operatoros/shared";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
 import { schemas } from "./generated/client";
@@ -47,7 +47,7 @@ export async function getOpenTillSession(): Promise<TillSession | null> {
 export async function openTillSession(input: OpenTillInput): Promise<TillSession> {
   if (USE_MOCK_API) return mockDelay(store.openTill(input));
   const raw = await apiRequest<unknown>("POST", "/api/v1/till/open", {
-    body: { location_id: DEFAULT_LOCATION_ID, opening_float_minor: input.openingFloatMinor },
+    body: { location_id: await getDefaultLocationId(), opening_float_minor: input.openingFloatMinor },
     idempotencyKey: newIdempotencyKey(),
   });
   const session = mapTillSessionOut(schemas.TillSessionOut.parse(raw));

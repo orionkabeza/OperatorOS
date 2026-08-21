@@ -1,7 +1,7 @@
 import { minorUnits, type MinorUnits } from "@operatoros/shared";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
 import type { z } from "zod";
 import type { MoneyLocation, MoneyMovement, MoneyMovementFilters } from "./types";
@@ -29,12 +29,12 @@ function mapBalanceCard(c: z.infer<typeof schemas.BalanceCardOut>): MoneyLocatio
  * required query param the old code never sent. Kept zero-arg (rather than
  * accepting a `locationId` parameter) so this can still be passed directly
  * as a React Query `queryFn` (`lib/queries/cashbox.ts`) without every call
- * site needing to know about `DEFAULT_LOCATION_ID` — see that constant's
- * comment in config.ts for the "no location-switcher UI yet" caveat.
+ * site needing to know about the location — see `getDefaultLocationId()` in
+ * config.ts for the "no location-switcher UI yet" caveat.
  */
 export async function listMoneyLocations(): Promise<MoneyLocation[]> {
   if (USE_MOCK_API) return mockDelay(store.listMoneyLocations());
-  const raw = await apiRequest<unknown>("GET", "/api/v1/cashbox/balances", { query: { location_id: DEFAULT_LOCATION_ID } });
+  const raw = await apiRequest<unknown>("GET", "/api/v1/cashbox/balances", { query: { location_id: await getDefaultLocationId() } });
   return schemas.BalanceCardOut.array().parse(raw).map(mapBalanceCard);
 }
 
@@ -84,7 +84,7 @@ async function ensureMoneyLocationId(accountKey: string, locationId: string): Pr
 
 export async function updateMoneyLocationBalance(accountKey: string, countedMinor: MinorUnits, reason?: string): Promise<MoneyLocation> {
   if (USE_MOCK_API) return mockDelay(store.updateMoneyLocationBalance(accountKey, countedMinor, reason));
-  const moneyLocationId = await ensureMoneyLocationId(accountKey, DEFAULT_LOCATION_ID);
+  const moneyLocationId = await ensureMoneyLocationId(accountKey, await getDefaultLocationId());
   const raw = await apiRequest<unknown>("POST", `/api/v1/cashbox/money-locations/${moneyLocationId}/update-balance`, {
     body: { new_balance_minor: countedMinor, note: reason ?? null },
     idempotencyKey: newIdempotencyKey(),
@@ -105,7 +105,7 @@ export async function createMoneyLocation(input: {
   locationId?: string;
   maskedAccountNumber?: string | null;
 }): Promise<MoneyLocation> {
-  const locationId = input.locationId ?? DEFAULT_LOCATION_ID;
+  const locationId = input.locationId ?? (await getDefaultLocationId());
   const raw = await apiRequest<unknown>("POST", "/api/v1/cashbox/money-locations", {
     body: {
       location_id: locationId,
@@ -168,7 +168,7 @@ function mapMovement(m: z.infer<typeof schemas.MoneyMovementOut>, index: number)
 export async function listMoneyMovements(filters?: MoneyMovementFilters): Promise<MoneyMovement[]> {
   if (USE_MOCK_API) return mockDelay(store.listMoneyMovements(filters));
   const raw = await apiRequest<unknown>("GET", "/api/v1/cashbox/movements", {
-    query: { location_id: DEFAULT_LOCATION_ID, days: "90" },
+    query: { location_id: await getDefaultLocationId(), days: "90" },
   });
   let rows = schemas.MoneyMovementOut.array().parse(raw).map(mapMovement);
   if (filters?.accountKey) rows = rows.filter((r) => r.accountKey === filters.accountKey);

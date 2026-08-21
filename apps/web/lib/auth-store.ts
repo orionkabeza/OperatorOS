@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { USE_MOCK_API } from "@/lib/api/config";
+import { resetDefaultLocationId, USE_MOCK_API } from "@/lib/api/config";
 
 /**
  * Real auth, replacing the deleted lib/demo-auth-store.ts (D.1, plan
@@ -86,6 +86,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ shutterState: "locked-out" });
       return;
     }
+    // Any location cached for a previous session belongs to a different
+    // business -- clear before the new session can read it.
+    resetDefaultLocationId();
     set({ shutterState: "submitting" });
 
     if (USE_MOCK_API) {
@@ -188,6 +191,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await fetch("/session/logout", { method: "POST" }).catch(() => undefined);
     }
     pendingChallengeToken = null;
+    resetDefaultLocationId();
     set({ signedIn: false, shutterState: "idle" });
   },
 

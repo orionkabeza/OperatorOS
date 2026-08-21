@@ -1,5 +1,5 @@
 import type { MinorUnits } from "@operatoros/shared";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
 import { schemas } from "./generated/client";
@@ -76,7 +76,7 @@ export async function adjustStock(input: AdjustStockInput): Promise<StockMovemen
     return mockDelay(store.appendStockMovement({ productId: input.productId, type: "adjustment", qtyDelta: input.qtyDelta, reference: input.reason }));
   }
   const raw = await apiRequest<unknown>("POST", "/api/v1/stock/adjust", {
-    body: { location_id: DEFAULT_LOCATION_ID, product_id: input.productId, quantity_delta: input.qtyDelta, reason: input.reason },
+    body: { location_id: await getDefaultLocationId(), product_id: input.productId, quantity_delta: input.qtyDelta, reason: input.reason },
     idempotencyKey: newIdempotencyKey(),
   });
   // POST /adjust returns ProductLocationOut (the resulting balance), not a
@@ -145,7 +145,7 @@ export async function startStocktake(scope: StocktakeScope, freezeItems: boolean
   if (USE_MOCK_API) return mockDelay(store.startStocktake(scope, freezeItems));
   let wireScope = "all";
   let categoryId: string | null = null;
-  let locationId = DEFAULT_LOCATION_ID;
+  let locationId = await getDefaultLocationId();
   if (typeof scope === "object" && "categoryId" in scope) {
     wireScope = "category";
     categoryId = scope.categoryId;

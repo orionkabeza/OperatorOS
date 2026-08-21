@@ -1,7 +1,7 @@
 import { minorUnits } from "@operatoros/shared";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
 import { mapCustomerOut } from "./customers";
 import type { z } from "zod";
@@ -214,7 +214,7 @@ export async function takePayment(input: TakePaymentInput): Promise<TakePaymentR
   if (USE_MOCK_API) return mockDelay(store.takePayment(input));
   const raw = await apiRequest<unknown>("POST", `/api/v1/debt/accounts/${input.customerId}/take-payment`, {
     body: {
-      location_id: DEFAULT_LOCATION_ID,
+      location_id: await getDefaultLocationId(),
       amount_minor: input.amountMinor,
       method: input.method,
       reference: input.transactionRef ?? null,

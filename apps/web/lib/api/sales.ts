@@ -1,5 +1,5 @@
 import { minorUnits, type MinorUnits } from "@operatoros/shared";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
 import { schemas } from "./generated/client";
@@ -79,7 +79,7 @@ export async function recordSale(input: RecordSaleInput): Promise<Sale> {
   if (USE_MOCK_API) return mockDelay(store.recordSale(input), 250);
   const raw = await apiRequest<unknown>("POST", "/api/v1/sales", {
     body: {
-      location_id: DEFAULT_LOCATION_ID,
+      location_id: await getDefaultLocationId(),
       customer_id: input.customerId,
       discount_minor: input.discountMinor,
       lines: input.lines.map((l) => ({
@@ -168,7 +168,7 @@ export async function issueQuote(lines: BasketLineInput[], customerId: string | 
   void totalMinor; // the real endpoint computes totals server-side from unit prices, same as before
   const raw = await apiRequest<unknown>("POST", "/api/v1/sales/quotes", {
     body: {
-      location_id: DEFAULT_LOCATION_ID,
+      location_id: await getDefaultLocationId(),
       customer_id: customerId,
       discount_minor: 0,
       lines: lines.map((l) => ({ product_id: l.productId, quantity: l.qty, unit_price_minor: l.unitPriceMinor })),

@@ -2,7 +2,7 @@ import { minorUnits } from "@operatoros/shared";
 import { addQty, qtyToNumber } from "../decimal";
 import { CATEGORIES, UNITS } from "../mock/seed";
 import { appendStockMovement, getDb, mockDelay } from "../mock/store";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
 import type { z } from "zod";
 import type { Category, CreateProductInput, ImportPreview, ImportRow, Product, ProductFilters, Unit } from "./types";
@@ -151,7 +151,7 @@ export async function listProducts(filters?: ProductFilters): Promise<Product[]>
   if (filters?.quickFilter === "low-stock" || filters?.quickFilter === "out-of-stock" || filters?.quickFilter === "negative-stock") {
     const stockRaw = await apiRequest<unknown>("GET", "/api/v1/stock/locations", {
       query: {
-        location_id: DEFAULT_LOCATION_ID,
+        location_id: await getDefaultLocationId(),
         low_stock: filters.quickFilter === "low-stock" ? "true" : undefined,
         negative_stock: filters.quickFilter === "negative-stock" ? "true" : undefined,
       },
@@ -248,7 +248,7 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
       base_unit_id: input.unitId,
       cost_price_minor: input.costMinor,
       selling_price_minor: input.priceMinor,
-      opening_location_id: DEFAULT_LOCATION_ID,
+      opening_location_id: await getDefaultLocationId(),
       opening_quantity: input.openingQty ?? null,
     },
     idempotencyKey: newIdempotencyKey(),
@@ -371,7 +371,7 @@ export async function commitImport(rows: ImportRow[]): Promise<{ created: number
   const raw = await apiRequest<unknown>("POST", "/api/v1/products/import/commit", {
     body: {
       default_unit_id: defaultUnitId,
-      opening_location_id: DEFAULT_LOCATION_ID,
+      opening_location_id: await getDefaultLocationId(),
       rows: rows.map((r) => ({
         row_number: r.rowNumber,
         name: r.name,

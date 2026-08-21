@@ -1,7 +1,7 @@
 import { minorUnits, type MinorUnits } from "@operatoros/shared";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
 import type { z } from "zod";
 import type { MatchMomoTransactionInput, MomoProviderConnection, MomoTransaction } from "./types";
@@ -57,7 +57,7 @@ export async function getUnmatchedMomoTotal(): Promise<{ totalMinor: MinorUnits;
 export async function matchMomoTransaction(input: MatchMomoTransactionInput): Promise<MomoTransaction> {
   if (USE_MOCK_API) return mockDelay(store.matchMomoTransaction(input));
   await apiRequest<unknown>("POST", `/api/v1/momo/transactions/${input.momoTransactionId}/match`, {
-    body: { matched_to_type: "debt_payment", location_id: DEFAULT_LOCATION_ID, customer_id: input.customerId },
+    body: { matched_to_type: "debt_payment", location_id: await getDefaultLocationId(), customer_id: input.customerId },
     idempotencyKey: newIdempotencyKey(),
   });
   const transactions = await listMomoTransactions();

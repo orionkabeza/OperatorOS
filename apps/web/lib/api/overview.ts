@@ -1,7 +1,7 @@
 import { minorUnits } from "@operatoros/shared";
 import { qtyToNumber } from "../decimal";
 import { getDb, inTheTillMinor, lowStockCount, todaysCreditMinor, todaysTakenMinor } from "../mock/store";
-import { apiRequest, DEFAULT_LOCATION_ID, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
 import { listExpenses } from "./expenses";
 import { listProducts } from "./products";
@@ -139,7 +139,7 @@ function buildNeedsYouToday(needs: {
 
 export async function getOverview(): Promise<Overview> {
   if (USE_MOCK_API) return Promise.resolve(computeOverview());
-  const raw = await apiRequest<unknown>("GET", "/api/v1/overview", { query: { location_id: DEFAULT_LOCATION_ID } });
+  const raw = await apiRequest<unknown>("GET", "/api/v1/overview", { query: { location_id: await getDefaultLocationId() } });
   const o = schemas.OverviewOut.parse(raw);
 
   // ThisMonthOut has no expenses figure — derived from the real, separately

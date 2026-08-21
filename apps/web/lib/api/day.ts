@@ -1,5 +1,5 @@
 import type { MinorUnits } from "@operatoros/shared";
-import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
 import { schemas } from "./generated/client";
@@ -30,7 +30,7 @@ function mapDaySessionOut(d: z.infer<typeof schemas.DaySessionOut>): DaySession 
 
 export async function getDayStatus(): Promise<DaySession> {
   if (USE_MOCK_API) return mockDelay(store.getDaySession());
-  const raw = await apiRequest<unknown>("GET", "/api/v1/day/status", { query: { location_id: DEFAULT_LOCATION_ID } });
+  const raw = await apiRequest<unknown>("GET", "/api/v1/day/status", { query: { location_id: await getDefaultLocationId() } });
   const parsed = schemas.DaySessionOut.nullable().parse(raw);
   if (parsed) return mapDaySessionOut(parsed);
   // No open (or ever-opened) day at this location — DaySession requires a
@@ -40,7 +40,7 @@ export async function getDayStatus(): Promise<DaySession> {
   return {
     id: "",
     businessDate: new Date().toISOString().slice(0, 10),
-    locationId: DEFAULT_LOCATION_ID,
+    locationId: await getDefaultLocationId(),
     status: "closed",
     openedAt: null,
     openedBy: null,
@@ -66,7 +66,7 @@ export async function openDay(input: OpenDayInput): Promise<DaySession> {
   }
   const raw = await apiRequest<unknown>("POST", "/api/v1/day/open", {
     body: {
-      location_id: DEFAULT_LOCATION_ID,
+      location_id: await getDefaultLocationId(),
       counted_amount_minor: input.countedMinor,
       variance_reason: combineVarianceReason(input.reason, input.reasonNote),
     },
@@ -103,7 +103,7 @@ export async function getDayCloseChecklist(): Promise<DayCloseChecklist> {
 /** No `/api/v1/day/summary` endpoint exists — derived from `GET /api/v1/overview`'s `today` block, which carries the same underlying figures. */
 export async function getDaySummary(): Promise<DaySummary> {
   if (USE_MOCK_API) return mockDelay(store.daySummary());
-  const raw = await apiRequest<unknown>("GET", "/api/v1/overview", { query: { location_id: DEFAULT_LOCATION_ID } });
+  const raw = await apiRequest<unknown>("GET", "/api/v1/overview", { query: { location_id: await getDefaultLocationId() } });
   const overview = schemas.OverviewOut.parse(raw);
   const today = overview.today;
   const takenMinor = today.revenue_minor - today.credit_minor;
@@ -131,7 +131,7 @@ export async function getDaySummary(): Promise<DaySummary> {
 /** No `/api/v1/day/expected-till` endpoint — derived from `GET /api/v1/overview`'s `money_position.balances_by_account["till"]`, the same figure `api/routers/day.py::close_day` itself reads server-side to compute the expected amount. */
 export async function getExpectedTillMinor() {
   if (USE_MOCK_API) return mockDelay(store.expectedTillMinor());
-  const raw = await apiRequest<unknown>("GET", "/api/v1/overview", { query: { location_id: DEFAULT_LOCATION_ID } });
+  const raw = await apiRequest<unknown>("GET", "/api/v1/overview", { query: { location_id: await getDefaultLocationId() } });
   const overview = schemas.OverviewOut.parse(raw);
   return overview.money_position.balances_by_account["till"] ?? 0;
 }
@@ -146,7 +146,7 @@ export async function closeDay(input: {
   }
   const raw = await apiRequest<unknown>("POST", "/api/v1/day/close", {
     body: {
-      location_id: DEFAULT_LOCATION_ID,
+      location_id: await getDefaultLocationId(),
       counted_amount_minor: input.countedMinor,
       variance_reason: combineVarianceReason(input.reason, input.reasonNote),
     },

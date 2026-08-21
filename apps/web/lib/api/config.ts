@@ -24,15 +24,51 @@ export class ApiError extends Error {
 }
 
 /**
- * The frontend has no location-switcher UI (single-location seed data
- * throughout Phase 0-2 — lib/mock/seed.ts's `LOCATION_ID`), but several
- * real apps/api endpoints (day/till, sales, stock, take-payment, cashbox)
- * require a `location_id` the UI has nowhere to source one from yet. Every
- * real-API call needing one uses this constant until a real location
- * picker exists — matches the mock seed's only location so mock and real
- * point at "the same" place conceptually. See docs/DECISIONS.md.
+ * The mock seed's only location (lib/mock/seed.ts's `LOCATION_ID`). Valid
+ * ONLY in mock mode — a real business's locations have server-generated
+ * UUIDs and no row with this id exists. Use `getDefaultLocationId()`, which
+ * picks the right one for the current mode; this is exported for the mock
+ * layer and tests, not for building real requests.
  */
 export const DEFAULT_LOCATION_ID = "loc-nyabugogo";
+
+let defaultLocationIdCache: string | null = null;
+
+/**
+ * The `location_id` every real day/till/sales/stock/cashbox/expense call
+ * requires. The frontend still has no location-switcher UI, so "default"
+ * means the first location assigned to the signed-in user.
+ *
+ * This used to be the `DEFAULT_LOCATION_ID` constant at every real call
+ * site, which meant production sent the *mock* location id to the real API
+ * — no such row exists, so `POST /api/v1/day/open` died on
+ * `day_sessions_location_id_fkey` and came back 500. Opening the shop was
+ * impossible, and with it everything gated behind an open day. Resolved
+ * from `GET /api/v1/users/me`'s `location_ids` instead, cached per session
+ * because it cannot change without signing in as someone else.
+ */
+export async function getDefaultLocationId(): Promise<string> {
+  if (USE_MOCK_API) return DEFAULT_LOCATION_ID;
+  if (defaultLocationIdCache) return defaultLocationIdCache;
+  const me = await apiRequest<{ location_ids?: string[] }>("GET", "/api/v1/users/me");
+  const locationId = me.location_ids?.[0];
+  if (!locationId) {
+    // Honest failure rather than falling back to a constant that is
+    // guaranteed to violate a foreign key further down.
+    throw new ApiError(
+      "This account isn't assigned to a shop location yet. An owner needs to assign one before you can open the shop.",
+      409,
+    );
+  }
+  defaultLocationIdCache = locationId;
+  return locationId;
+}
+
+/** Must run on sign-out/sign-in — a cached location from a previous session
+ *  belongs to a different business and would leak across tenants. */
+export function resetDefaultLocationId(): void {
+  defaultLocationIdCache = null;
+}
 
 /**
  * For a frontend capability with genuinely no backend counterpart (verified

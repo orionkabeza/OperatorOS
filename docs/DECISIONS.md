@@ -786,3 +786,33 @@ Even after fixing the two bugs above, real login *still* failed with the identic
 **Adjacent gaps found, deliberately not fixed here:** the importer's client-side rules diverge from the backend's — the preview requires a SKU on every row while `product_import.py::REQUIRED_COLUMNS` is `["name"]` alone, so the UI refuses files the API would accept. And `CsvImporter` discards the API's `skipped` count, which is what made this bug invisible in the first place: an import that drops rows currently looks identical to one that doesn't. Both are worth closing; neither is a data-integrity issue on its own.
 
 **How to apply:** `USE_MOCK_API` guards the *network* branches in `lib/api/*.ts`, but any helper reaching into `getDb()` is reading mock data whether or not it makes an API call — a function can be "pure local computation" and still be wrong against a real backend, because the local data it computes over is fake. Grep for `getDb()` outside a `USE_MOCK_API` branch when auditing this boundary. And note the shape of the failure: the preview was not merely *showing* something wrong, it was *feeding* it to an API that trusted it. Client-computed validation flags that a server acts on need the same scrutiny as any other untrusted input.
+
+---
+
+## 2026-08-22 — Every real API call sent a location_id that did not exist
+
+**Found by:** clicking "Open the shop" on the live site. Nothing happened — no error, no spinner, no state change.
+
+**What was wrong:** `lib/api/config.ts` exported `DEFAULT_LOCATION_ID = "loc-nyabugogo"` — the id of the *mock seed's* only location — and roughly twenty-five real-API call sites across `day`, `sales`, `stock`, `cashbox`, `debt`, `expenses`, `momo`, `products` and `till` sent it as the `location_id` on live requests. A real business's locations are server-generated UUIDs; no row with that id exists in any real tenant. The constant's own comment described this as making mock and real "point at 'the same' place conceptually", which is exactly the reasoning that hid it: the two id-spaces are not the same space at all.
+
+Confirmed from the production API log rather than inferred:
+
+```
+asyncpg.exceptions.ForeignKeyViolationError: insert or update on table
+"day_sessions" violates foreign key constraint "day_sessions_location_id_fkey"
+DETAIL:  Key is not present in table "locations".
+INFO: "POST /api/v1/day/open HTTP/1.1" 500 Internal Server Error
+```
+
+`GET /day/status` returned `200 null` for the same bogus id (no matching row is a legitimate "never opened"), so the UI cheerfully rendered the open-the-shop prompt and only failed on submit — and the mutation's rejection was never surfaced, so the button appeared inert. Opening the shop was impossible in production, and with it everything gated behind an open day: sales, till, stock movements, expenses.
+
+**Decision:** resolve the location from the backend. `getDefaultLocationId()` returns the mock constant in mock mode and, against a real backend, the first entry of `GET /api/v1/users/me`'s `location_ids`, cached per session. Verified end-to-end before writing the fix: the same `POST /day/open` that returned 500 with `loc-nyabugogo` returns **201** with the user's real location id. The cache is cleared on sign-in and sign-out — a location cached from a previous session belongs to a different business, and on a multi-tenant system that is a cross-tenant leak, not just a stale value.
+
+**Alternatives rejected:**
+- *`GET /api/v1/stock/locations`.* The obvious-sounding source, and wrong: it returns `ProductLocationOut[]` — per-product stock rows — so it is empty for a business with no products yet, which is precisely the state a new tenant is in when it first tries to open the shop.
+- *Fall back to the constant when `/users/me` has no location.* Rejected — that converts a clear, explainable failure into a foreign-key violation several calls later with nothing pointing at the cause. It now throws a message naming the actual problem.
+- *Add a location-switcher UI.* The real long-term answer for multi-location businesses, but a much larger piece of product work; "the signed-in user's first location" is the honest single-location behaviour the app already assumed, just sourced correctly.
+
+**Still open, and the reason this was invisible:** the failed mutation surfaced nothing to the user. `useOpenDay`'s error state isn't rendered, so a 500 and a successful no-op are indistinguishable at the UI. That is the deeper defect — this bug was findable only by opening devtools — and it is worth fixing before the next one hides the same way. Not addressed here.
+
+**How to apply:** an identifier that is *valid in mock data* is not thereby valid against a real backend, no matter how conceptually equivalent the two seem — mock ids are a different namespace, and a constant that crosses that boundary will always be wrong on one side of it. When a UI action does nothing at all, check the network tab before the component: an unrendered mutation error looks exactly like a dead button.
