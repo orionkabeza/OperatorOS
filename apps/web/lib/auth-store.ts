@@ -36,8 +36,26 @@ interface AuthState {
   shutterState: ShutterState;
   attemptsRemaining: number;
   lockedUntil: number | null;
+  /** What will actually be submitted -- freely editable by the user. */
   businessSlug: string;
+  /**
+   * The last *confirmed* slug (restored from localStorage, or set after a
+   * successful sign-in). Display-only. Deliberately separate from
+   * `businessSlug`: anything driven off the live editable value re-renders
+   * on every keystroke, which is how the backdrop once ended up showing a
+   * single letter as the business name.
+   */
+  rememberedSlug: string;
   setBusinessSlug: (slug: string) => void;
+  /**
+   * Must run in an effect, never at module scope: this store is created
+   * during SSR too, where `readLastBusinessSlug()` can only return "".
+   * Seeding the initial state from localStorage therefore makes the
+   * server's HTML and the client's first render disagree for any returning
+   * user -- a hydration mismatch. Reading it after mount instead means both
+   * passes start from "" and agree.
+   */
+  hydrateBusinessSlug: () => void;
   signIn: (phone: string, pin: string, deviceId: string, remember: boolean) => Promise<void>;
   submitTwoFactor: (code: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -51,8 +69,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   shutterState: "idle",
   attemptsRemaining: 3,
   lockedUntil: null,
-  businessSlug: readLastBusinessSlug(),
+  businessSlug: "",
+  rememberedSlug: "",
   setBusinessSlug: (slug) => set({ businessSlug: slug }),
+  hydrateBusinessSlug: () => {
+    const remembered = readLastBusinessSlug();
+    if (!remembered) return;
+    // Prefill only -- never overwrite something the user has already typed
+    // (the effect can run after they've started filling the form in).
+    set((s) => ({ rememberedSlug: remembered, businessSlug: s.businessSlug || remembered }));
+  },
 
   signIn: async (phone, pin, deviceId, remember) => {
     const { lockedUntil, businessSlug } = get();
@@ -109,7 +135,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       rememberBusinessSlug(businessSlug);
-      set({ signedIn: true, shutterState: "idle", attemptsRemaining: 3, lockedUntil: null });
+      set({
+        signedIn: true,
+        shutterState: "idle",
+        attemptsRemaining: 3,
+        lockedUntil: null,
+        rememberedSlug: businessSlug,
+      });
     } catch {
       // Network failure -- honest as "try again", not a false
       // wrong-credentials verdict the user might act on (e.g. resetting
@@ -122,7 +154,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (USE_MOCK_API) {
       if (code === MOCK_CODE) {
         rememberBusinessSlug(get().businessSlug);
-        set({ signedIn: true, shutterState: "idle" });
+        set({ signedIn: true, shutterState: "idle", rememberedSlug: get().businessSlug });
       } else {
         set({ shutterState: "wrong-credentials" });
       }
@@ -145,7 +177,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       pendingChallengeToken = null;
       rememberBusinessSlug(get().businessSlug);
-      set({ signedIn: true, shutterState: "idle" });
+      set({ signedIn: true, shutterState: "idle", rememberedSlug: get().businessSlug });
     } catch {
       set({ shutterState: "wrong-credentials" });
     }

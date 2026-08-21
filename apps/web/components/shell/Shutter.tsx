@@ -2,7 +2,7 @@
 
 import * as Checkbox from "@radix-ui/react-checkbox";
 import clsx from "clsx";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../design/Button";
 import { PinInput } from "./PinInput";
 import { useAuthStore } from "@/lib/auth-store";
@@ -48,12 +48,25 @@ export function Shutter() {
     signedIn,
     businessSlug,
     setBusinessSlug,
+    rememberedSlug,
+    hydrateBusinessSlug,
   } = useAuthStore();
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [code, setCode] = useState("");
   const [keepSignedIn, setKeepSignedIn] = useState(false);
-  const businessName = businessSlug ? titleCaseSlug(businessSlug) : "OperatorOS";
+
+  // Restores the last-used tenant after mount rather than at store
+  // construction -- see auth-store.ts::hydrateBusinessSlug for why the
+  // timing matters (SSR hydration).
+  useEffect(() => {
+    hydrateBusinessSlug();
+  }, [hydrateBusinessSlug]);
+
+  // Driven by the *confirmed* slug, not the field's live value: keying this
+  // off `businessSlug` meant the backdrop re-rendered on every keystroke and
+  // showed whatever partial text had been typed so far.
+  const businessName = rememberedSlug ? titleCaseSlug(rememberedSlug) : "OperatorOS";
 
   const submitting = shutterState === "submitting";
   const wrong = shutterState === "wrong-credentials";
@@ -145,7 +158,18 @@ export function Shutter() {
               Open up
             </h1>
 
-            {USE_MOCK_API || businessSlug ? null : (
+            {/*
+              Always rendered in real-API mode, prefilled from the remembered
+              tenant rather than hidden once one exists. Two reasons it can't
+              be conditional on `businessSlug`: keying the condition off the
+              live value unmounted the field on the first keystroke (it became
+              truthy), stranding a one-character slug; and hiding it whenever
+              *any* slug is remembered makes a wrong remembered value
+              unrecoverable -- every attempt fails as "that PIN doesn't match
+              this number", with no visible field to correct and no hint that
+              the business, not the PIN, is what's wrong.
+            */}
+            {USE_MOCK_API ? null : (
               <div className="flex flex-col gap-4">
                 <label
                   htmlFor="shutter-business"
