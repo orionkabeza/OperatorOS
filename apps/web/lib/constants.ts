@@ -9,8 +9,8 @@
 export const DISCOUNT_MANAGER_PIN_THRESHOLD_PERCENT = 15;
 
 /**
- * DEMO ONLY, same spirit as lib/demo-auth-store.ts — a stand-in manager PIN
- * used to gate the discount-above-threshold and credit-limit-override flows
+ * DEMO ONLY — a stand-in manager PIN used to gate the
+ * discount-above-threshold and credit-limit-override flows client-side
  * until real role/permission-scoped PIN verification exists against
  * apps/api. Must be deleted, not extended, once that lands.
  */

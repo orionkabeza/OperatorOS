@@ -87,4 +87,18 @@
   .shutter-brand-text {
     font-size: clamp(1.75rem, 7vw, 3.5rem);
   }
+
+  /* D.1 Shutter: the housing the shutter rolls up into/down out of. A
+     static bar (no animation of its own -- B.7's four-animation budget
+     stays untouched), sat above the shutter's own z-index so the raise
+     animation visually disappears behind it instead of just sliding off
+     the top of the viewport into nothing. */
+  .shutter-housing {
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: 10px;
+    background: linear-gradient(180deg, theme("colors.steel-deep"), color-mix(in srgb, theme("colors.steel-deep") 70%, black));
+    box-shadow: 0 3px 6px -2px rgba(0, 0, 0, 0.55);
+    z-index: 51;
+  }
 }

@@ -162,19 +162,39 @@ const config: Config = {
       // by omitting the animation class — so the reduced-motion fallback is
       // explicit at every usage, not implicit.
       keyframes: {
-        "shutter-raise": { from: { transform: "translateY(0)" }, to: { transform: "translateY(-100%)" } },
-        // D.11 Close the Shop: the same showpiece motion (B.7 counts
-        // raise/lower as one animation, not two), reversed — a shutter
-        // sliding down to cover the screen rather than up to reveal it.
-        "shutter-lower": { from: { transform: "translateY(-100%)" }, to: { transform: "translateY(0)" } },
+        // A real motorized shutter doesn't glide in a straight line: the
+        // chain takes up slack first (a small rattle), the motor then
+        // pulls it up at speed (a touch of motion blur), and it visibly
+        // compresses as it winds into the housing at the top rather than
+        // just sliding off-screen. Still ONE named animation (B.7's
+        // four-animation budget counts raise/lower as one), just staged.
+        "shutter-raise": {
+          "0%": { transform: "translateY(0) scaleY(1)", filter: "blur(0)" },
+          "5%": { transform: "translateY(3px) scaleY(1)", filter: "blur(0)" },
+          "10%": { transform: "translateY(-3px) scaleY(1)", filter: "blur(0)" },
+          "16%": { transform: "translateY(0) scaleY(1)", filter: "blur(0)" },
+          "55%": { transform: "translateY(-55%) scaleY(1)", filter: "blur(.5px)" },
+          "88%": { transform: "translateY(-90%) scaleY(.985)", filter: "blur(.2px)" },
+          "100%": { transform: "translateY(-100%) scaleY(.97)", filter: "blur(0)" },
+        },
+        // D.11 Close the Shop: the same showpiece motion, reversed — a
+        // shutter unwinding from the housing and settling to the floor
+        // with a slight overshoot-and-catch rather than a flat drop.
+        "shutter-lower": {
+          "0%": { transform: "translateY(-100%) scaleY(.97)", filter: "blur(0)" },
+          "12%": { transform: "translateY(-92%) scaleY(1)", filter: "blur(.3px)" },
+          "60%": { transform: "translateY(-15%) scaleY(1)", filter: "blur(.5px)" },
+          "85%": { transform: "translateY(3%) scaleY(1)", filter: "blur(0)" },
+          "100%": { transform: "translateY(0) scaleY(1)", filter: "blur(0)" },
+        },
         "shutter-fade": { from: { opacity: "1" }, to: { opacity: "0" } },
         "count-up": { from: { opacity: "0.4" }, to: { opacity: "1" } },
         "drawer-slide-in": { from: { transform: "translateX(24px)", opacity: "0" }, to: { transform: "translateX(0)", opacity: "1" } },
         "row-fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
       },
       animation: {
-        "shutter-raise": "shutter-raise 400ms cubic-bezier(.22,.61,.36,1) forwards",
-        "shutter-lower": "shutter-lower 400ms cubic-bezier(.22,.61,.36,1) forwards",
+        "shutter-raise": "shutter-raise 650ms cubic-bezier(.22,.61,.36,1) forwards",
+        "shutter-lower": "shutter-lower 650ms cubic-bezier(.22,.61,.36,1) forwards",
         "shutter-fade": "shutter-fade 150ms ease-out forwards",
         // `forwards` added on all three for consistency with shutter-raise/
         // -lower/-fade above — without it the end state technically

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { ToastViewport } from "@/components/design/Toast";
 import { Shutter } from "@/components/shell/Shutter";
-import { useDemoAuthStore } from "@/lib/demo-auth-store";
+import { useAuthStore } from "@/lib/auth-store";
 import { useOnboardingState } from "@/lib/queries/onboarding";
 
 // Everything behind the Shutter (Onboarding's whole wizard including the
@@ -21,7 +21,7 @@ const ShopFloor = dynamic(
 );
 
 export default function Home() {
-  const signedIn = useDemoAuthStore((s) => s.signedIn);
+  const signedIn = useAuthStore((s) => s.signedIn);
   const { data: onboarding } = useOnboardingState();
 
   return (

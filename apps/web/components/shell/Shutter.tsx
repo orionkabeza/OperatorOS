@@ -5,13 +5,23 @@ import clsx from "clsx";
 import { useState } from "react";
 import { Button } from "../design/Button";
 import { PinInput } from "./PinInput";
-import { useDemoAuthStore } from "@/lib/demo-auth-store";
+import { useAuthStore } from "@/lib/auth-store";
+import { getDeviceId } from "@/lib/device-id";
+import { USE_MOCK_API } from "@/lib/api/config";
 
 const LOCKOUT_LABEL_FALLBACK = "shortly";
 
 function formatLockoutTime(until: number): string {
   const d = new Date(until);
   return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function titleCaseSlug(slug: string): string {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 /**
@@ -21,14 +31,29 @@ function formatLockoutTime(until: number): string {
  * `motion-safe:`/`motion-reduce:` rather than a JS media-query check, so
  * the fallback is declared once, at the CSS level, and can't drift from
  * the animated version.
+ *
+ * Login needs a business_slug apps/api has no subdomain-per-tenant
+ * routing to source it from yet (docs/DECISIONS.md) -- this remembers
+ * the last one used on this device (spec D.1's own "if the subdomain or
+ * last-used tenant is known" language) and only asks for it explicitly
+ * the first time, or if the remembered one is cleared/wrong.
  */
-export function Shutter({ businessName = "Kigali Hardware Supplies" }: { businessName?: string }) {
-  const { shutterState, attemptsRemaining, lockedUntil, signIn, submitTwoFactor, signedIn } =
-    useDemoAuthStore();
-  const [phone, setPhone] = useState("788 402 219");
+export function Shutter() {
+  const {
+    shutterState,
+    attemptsRemaining,
+    lockedUntil,
+    signIn,
+    submitTwoFactor,
+    signedIn,
+    businessSlug,
+    setBusinessSlug,
+  } = useAuthStore();
+  const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [code, setCode] = useState("");
   const [keepSignedIn, setKeepSignedIn] = useState(false);
+  const businessName = businessSlug ? titleCaseSlug(businessSlug) : "OperatorOS";
 
   const submitting = shutterState === "submitting";
   const wrong = shutterState === "wrong-credentials";
@@ -46,6 +71,8 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
   // content genuinely doesn't need to stay mounted (it's animating off
   // screen, never coming back for this session), so it's just not rendered.
   return (
+    <>
+    <div className="shutter-housing" aria-hidden="true" />
     <div
       className={clsx(
         "shutter-slats fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-steel-deep",
@@ -101,7 +128,7 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
             className="flex flex-col gap-16"
             onSubmit={(e) => {
               e.preventDefault();
-              signIn(phone, pin);
+              signIn(phone, pin, getDeviceId(), keepSignedIn);
             }}
           >
             <p className="text-micro font-semibold uppercase tracking-tracked text-ink-soft">
@@ -110,6 +137,25 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
             <h1 className="type-expanded font-display text-section-head font-bold text-ink">
               Open up
             </h1>
+
+            {USE_MOCK_API || businessSlug ? null : (
+              <div className="flex flex-col gap-4">
+                <label
+                  htmlFor="shutter-business"
+                  className="text-micro font-semibold uppercase tracking-tracked text-ink-soft"
+                >
+                  Business
+                </label>
+                <input
+                  id="shutter-business"
+                  placeholder="your-business-slug"
+                  value={businessSlug}
+                  onChange={(e) => setBusinessSlug(e.target.value.trim())}
+                  className="h-control rounded border border-rule bg-paper px-12 text-body text-ink focus:outline-none focus:border-steel focus:ring-2 focus:ring-tape"
+                />
+                <p className="text-meta text-ink-soft">Remembered on this device after your first sign-in.</p>
+              </div>
+            )}
 
             <div className="flex flex-col gap-4">
               <label
@@ -188,5 +234,6 @@ export function Shutter({ businessName = "Kigali Hardware Supplies" }: { busines
 
       <p className="absolute bottom-32 text-table text-white/40">Kinyarwanda · English · Français</p>
     </div>
+    </>
   );
 }

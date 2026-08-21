@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useDemoAuthStore } from "@/lib/demo-auth-store";
+import { useAuthStore } from "@/lib/auth-store";
 import { useTillSession } from "@/lib/queries/till";
 import { useTillUiStore } from "@/lib/stores/till-ui-store";
 import type { DaySession } from "@/lib/api/types";
@@ -21,7 +21,7 @@ export function TopNav({
   businessName?: string;
   dayStatus?: DaySession | undefined;
 }) {
-  const signOut = useDemoAuthStore((s) => s.signOut);
+  const signOut = useAuthStore((s) => s.signOut);
   const { data: tillSession } = useTillSession();
   const requestCloseTill = useTillUiStore((s) => s.requestClose);
   const [cmdOpen, setCmdOpen] = useState(false);
