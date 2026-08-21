@@ -172,6 +172,22 @@ def validate_rows(
     return parsed
 
 
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_formula_safe(value: str) -> str:
+    """Neutralizes CSV/spreadsheet-formula injection (OWASP CSV Injection):
+    every field in this file is an echo of a business's own upload, so a
+    row that failed validation because its `name`/`sku`/etc. started with
+    `=`, `+`, `-`, `@`, or a tab/CR could otherwise land as a live formula
+    the moment the corrected-template CSV is reopened in Excel/Sheets.
+    Prefixing with a single quote forces spreadsheet apps to treat the
+    cell as plain text without changing what the business sees."""
+    if value and value[0] in _FORMULA_TRIGGER_CHARS:
+        return f"'{value}"
+    return value
+
+
 def corrected_template_csv(rows: list[ParsedRow]) -> str:
     """Spec D.2: "Errors are downloadable as a corrected-template CSV."
     Only the rows that failed validation, in the same column shape as the
@@ -185,14 +201,14 @@ def corrected_template_csv(rows: list[ParsedRow]) -> str:
             continue
         writer.writerow(
             [
-                row.name or "",
-                row.sku or "",
-                row.barcode or "",
-                row.category or "",
-                row.unit or "",
-                row.raw.get("cost_price", ""),
-                row.raw.get("selling_price", ""),
-                row.opening_quantity or "",
+                _csv_formula_safe(row.name or ""),
+                _csv_formula_safe(row.sku or ""),
+                _csv_formula_safe(row.barcode or ""),
+                _csv_formula_safe(row.category or ""),
+                _csv_formula_safe(row.unit or ""),
+                _csv_formula_safe(str(row.raw.get("cost_price", ""))),
+                _csv_formula_safe(str(row.raw.get("selling_price", ""))),
+                _csv_formula_safe(row.opening_quantity or ""),
                 "; ".join(row.errors),
             ]
         )

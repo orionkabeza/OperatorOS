@@ -210,3 +210,44 @@ async def test_oversized_upload_is_rejected(client: AsyncClient, tenant_a: Seede
     resp = await client.post("/api/v1/products/import/preview", headers=headers, files=files)
     assert resp.status_code == 422
     assert "limit" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_corrected_template_csv_escapes_formula_injection(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
+    """OWASP CSV Injection: a product name/sku that starts with =, +, -,
+    or @ must not survive into the corrected-template CSV as a live
+    formula trigger when the business reopens it in Excel/Sheets."""
+    malicious_csv = (
+        "name,sku,barcode,category,unit,cost_price,selling_price,opening_quantity\n"
+        "=cmd|'/c calc'!A1,+SKU1,,-Category,@unit,1000,2000,not-a-number\n"
+    )
+    headers = await auth_headers(client, tenant_a)
+    files = {"file": ("products.csv", malicious_csv.encode(), "text/csv")}
+    preview_resp = await client.post(
+        "/api/v1/products/import/preview", headers=headers, files=files
+    )
+    preview = preview_resp.json()["preview"]
+    assert preview[0]["errors"], "row should have failed validation (opening_quantity)"
+
+    resp = await client.post(
+        "/api/v1/products/import/corrected-template", headers=headers, json={"rows": preview}
+    )
+    assert resp.status_code == 200, resp.text
+    csv_text = resp.json()["csv"]
+
+    for line in csv_text.splitlines()[1:]:
+        for cell in line.split(","):
+            unquoted = cell.strip('"')
+            if unquoted:
+                assert unquoted[0] not in (
+                    "=",
+                    "+",
+                    "-",
+                    "@",
+                    "\t",
+                    "\r",
+                ), f"field {cell!r} was not neutralized against formula injection"
+    assert "'=cmd" in csv_text
+    assert "'+SKU1" in csv_text
