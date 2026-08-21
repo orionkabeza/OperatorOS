@@ -1,9 +1,13 @@
 name: Deploy OperatorOS
 
 # Deploys to both web servers on every push to main. The deploy itself runs
-# server-side (git pull + build + migrate + restart) via a dedicated SSH key
-# that is locked to a single forced command on each box, so this workflow can
-# only ever trigger a deploy — it can't get a shell or read anything back.
+# server-side (git pull + build both apps/api and apps/web + migrate once +
+# restart all three services) via a dedicated SSH key that is locked to a
+# single forced command on each box, so this workflow can only ever trigger
+# a deploy — it can't get a shell or read anything back. See
+# /opt/deploy-operatoros.sh on each box for the actual steps, and
+# docs/DECISIONS.md ("First real production deploy") for why the migration
+# only ever runs from web-01, and why apps/web builds standalone.
 #
 # Required repo secret (Settings -> Secrets and variables -> Actions):
 #   OPERATOROS_DEPLOY_KEY  = the PRIVATE half of the operatoros_deploy_key pair
