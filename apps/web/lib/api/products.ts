@@ -1,7 +1,10 @@
-import { qtyToNumber } from "../decimal";
+import { minorUnits } from "@operatoros/shared";
+import { addQty, qtyToNumber } from "../decimal";
 import { CATEGORIES, UNITS } from "../mock/seed";
 import { appendStockMovement, getDb, mockDelay } from "../mock/store";
-import { apiRequest, USE_MOCK_API } from "./config";
+import { apiRequest, DEFAULT_LOCATION_ID, newIdempotencyKey, USE_MOCK_API } from "./config";
+import { schemas } from "./generated/client";
+import type { z } from "zod";
 import type { Category, CreateProductInput, ImportPreview, ImportRow, Product, ProductFilters, Unit } from "./types";
 
 function daysSinceLastMovement(productId: string): number {
@@ -49,6 +52,80 @@ function applyFilters(products: Product[], filters?: ProductFilters): Product[] 
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// Real-API mapping
+// ---------------------------------------------------------------------------
+
+let categoriesCache: z.infer<typeof schemas.CategoryOut>[] | null = null;
+let unitsCache: z.infer<typeof schemas.UnitOut>[] | null = null;
+
+async function getCategoryUnitLookups() {
+  if (!categoriesCache) {
+    const raw = await apiRequest<unknown>("GET", "/api/v1/products/categories");
+    categoriesCache = schemas.CategoryOut.array().parse(raw);
+  }
+  if (!unitsCache) {
+    const raw = await apiRequest<unknown>("GET", "/api/v1/products/units");
+    unitsCache = schemas.UnitOut.array().parse(raw);
+  }
+  const categoryNameById = new Map(categoriesCache.map((c) => [c.id, c.name]));
+  const unitNameById = new Map(unitsCache.map((u) => [u.id, u.name]));
+  return { categoryNameById, unitNameById };
+}
+
+/**
+ * The real `ProductOut` (schemas/products.py) is much flatter than the
+ * frontend's `Product` — no `categoryName`/`unitName` (only ids, resolved
+ * here against `GET .../categories`/`.../units`), no `wholesalePriceMinor`
+ * /`imageUrl`/`notes` (none of these fields exist server-side at all — a
+ * genuine gap, not a naming mismatch), no per-location `locations[]`
+ * (that's `GET /api/v1/products/{id}/stock`, a SEPARATE call — passed in
+ * here only when the caller already has it, to avoid an N+1 fetch across
+ * every product in a list), and `status: string` instead of an `archived`
+ * boolean.
+ */
+function mapProductOut(
+  p: z.infer<typeof schemas.ProductOut>,
+  categoryNameById: Map<string, string>,
+  unitNameById: Map<string, string>,
+  stockByLocation?: z.infer<typeof schemas.ProductStockOut>[],
+): Product {
+  const unitName = unitNameById.get(p.base_unit_id) ?? p.base_unit_id;
+  const locations = (stockByLocation ?? []).map((s) => ({
+    locationId: s.location_id,
+    locationName: s.location_id, // ProductStockOut carries no location display name
+    onHand: s.on_hand,
+    reserved: s.reserved,
+  }));
+  const onHand = locations.reduce((sum, l) => addQty(sum, l.onHand), "0");
+  return {
+    id: p.id,
+    name: p.name,
+    aliases: p.aliases ?? [],
+    sku: p.sku ?? "",
+    barcode: p.barcode,
+    categoryId: p.category_id ?? "",
+    categoryName: p.category_id ? (categoryNameById.get(p.category_id) ?? p.category_id) : "",
+    unitId: p.base_unit_id,
+    unitName,
+    // No per-product unit-conversion list exists server-side — only the
+    // base unit is known, so it stands alone at factor 1.
+    unitConversions: [{ unitId: p.base_unit_id, unitName, factorToBase: 1 }],
+    costMinor: minorUnits(p.cost_price_minor ?? 0),
+    priceMinor: minorUnits(p.selling_price_minor),
+    wholesalePriceMinor: null, // no such field server-side
+    minSellPriceMinor: p.min_selling_price_minor !== null && p.min_selling_price_minor !== undefined ? minorUnits(p.min_selling_price_minor) : null,
+    taxClass: (p.tax_class as Product["taxClass"] | undefined) ?? "standard",
+    imageUrl: null, // no such field server-side
+    notes: "", // ProductOut never echoes notes back (only accepted on create/update)
+    reorderPoint: p.reorder_point,
+    reorderQty: p.reorder_quantity,
+    locations,
+    onHand: stockByLocation ? onHand : "0", // "0" (not fetched) in list mode — see getProduct for the per-item stock fetch
+    archived: p.status !== "active",
+  };
+}
+
 export async function listProducts(filters?: ProductFilters): Promise<Product[]> {
   if (USE_MOCK_API) {
     const rows = applyFilters(
@@ -57,9 +134,41 @@ export async function listProducts(filters?: ProductFilters): Promise<Product[]>
     );
     return mockDelay(rows);
   }
-  return apiRequest<Product[]>("GET", "/api/v1/products", {
-    query: { search: filters?.search, categoryId: filters?.categoryId, quickFilter: filters?.quickFilter },
+  const { categoryNameById, unitNameById } = await getCategoryUnitLookups();
+  const belowCost = filters?.quickFilter === "below-cost" ? "true" : undefined;
+  const raw = await apiRequest<unknown>("GET", "/api/v1/products", {
+    query: { search: filters?.search, category_id: filters?.categoryId, below_cost: belowCost },
   });
+  let rows = schemas.ProductOut.array()
+    .parse(raw)
+    .map((p) => mapProductOut(p, categoryNameById, unitNameById));
+
+  // Stock-dependent quick filters: derived from the real
+  // `GET /api/v1/stock/locations` endpoint (which DOES support
+  // `low_stock`/`negative_stock` query params server-side) rather than
+  // faked — `out-of-stock` has no direct query param, so it's filtered
+  // client-side from the same unfiltered balances fetch.
+  if (filters?.quickFilter === "low-stock" || filters?.quickFilter === "out-of-stock" || filters?.quickFilter === "negative-stock") {
+    const stockRaw = await apiRequest<unknown>("GET", "/api/v1/stock/locations", {
+      query: {
+        location_id: DEFAULT_LOCATION_ID,
+        low_stock: filters.quickFilter === "low-stock" ? "true" : undefined,
+        negative_stock: filters.quickFilter === "negative-stock" ? "true" : undefined,
+      },
+    });
+    const balances = schemas.ProductLocationOut.array().parse(stockRaw);
+    const matchingIds = new Set(
+      filters.quickFilter === "out-of-stock" ? balances.filter((b) => Number(b.on_hand) <= 0).map((b) => b.product_id) : balances.map((b) => b.product_id),
+    );
+    rows = rows.filter((p) => matchingIds.has(p.id));
+  } else if (filters?.quickFilter === "no-movement-90d" || filters?.quickFilter === "expiring-30d") {
+    // No cheap way to derive either against the real backend (would mean
+    // scanning all stock movements for every product, or a field that
+    // doesn't exist at all) — genuinely empty rather than faked, same
+    // treatment "expiring-30d" already gets in the mock branch above.
+    rows = [];
+  }
+  return rows;
 }
 
 export async function getProduct(id: string): Promise<Product> {
@@ -68,17 +177,30 @@ export async function getProduct(id: string): Promise<Product> {
     if (!product) throw new Error(`Product ${id} not found`);
     return mockDelay(product);
   }
-  return apiRequest<Product>("GET", `/api/v1/products/${id}`);
+  const { categoryNameById, unitNameById } = await getCategoryUnitLookups();
+  const [productRaw, stockRaw] = await Promise.all([
+    apiRequest<unknown>("GET", `/api/v1/products/${id}`),
+    apiRequest<unknown>("GET", `/api/v1/products/${id}/stock`),
+  ]);
+  return mapProductOut(schemas.ProductOut.parse(productRaw), categoryNameById, unitNameById, schemas.ProductStockOut.array().parse(stockRaw));
 }
 
 export async function listCategories(): Promise<Category[]> {
   if (USE_MOCK_API) return mockDelay(CATEGORIES);
-  return apiRequest<Category[]>("GET", "/api/v1/categories");
+  const raw = await apiRequest<unknown>("GET", "/api/v1/products/categories");
+  categoriesCache = schemas.CategoryOut.array().parse(raw);
+  return categoriesCache;
 }
 
 export async function listUnits(): Promise<Unit[]> {
   if (USE_MOCK_API) return mockDelay(UNITS);
-  return apiRequest<Unit[]>("GET", "/api/v1/units");
+  const raw = await apiRequest<unknown>("GET", "/api/v1/products/units");
+  unitsCache = schemas.UnitOut.array().parse(raw);
+  // Real `UnitOut` has no `factorToBase`/`isBase` fields (schemas/products.py
+  // — units are flat, base-vs-derived conversion isn't modeled server-side
+  // at all) — every unit is reported as its own base at factor 1, a
+  // disclosed simplification, not invented conversion data.
+  return unitsCache.map((u) => ({ id: u.id, name: u.name, factorToBase: 1, isBase: true }));
 }
 
 export async function createProduct(input: CreateProductInput): Promise<Product> {
@@ -116,10 +238,25 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
     }
     return mockDelay(product);
   }
-  return apiRequest<Product>("POST", "/api/v1/products", { body: input });
+  const { categoryNameById, unitNameById } = await getCategoryUnitLookups();
+  const raw = await apiRequest<unknown>("POST", "/api/v1/products", {
+    body: {
+      name: input.name,
+      sku: input.sku,
+      barcode: input.barcode ?? null,
+      category_id: input.categoryId,
+      base_unit_id: input.unitId,
+      cost_price_minor: input.costMinor,
+      selling_price_minor: input.priceMinor,
+      opening_location_id: DEFAULT_LOCATION_ID,
+      opening_quantity: input.openingQty ?? null,
+    },
+    idempotencyKey: newIdempotencyKey(),
+  });
+  return mapProductOut(schemas.ProductOut.parse(raw), categoryNameById, unitNameById);
 }
 
-/** Client-side CSV parse-and-validate preview per D.2 Step 3 — the real commit still goes through the API. */
+/** Client-side CSV parse-and-validate preview per D.2 Step 3 — the real commit still goes through the API. Pure local computation, no API call — unchanged by USE_MOCK_API either way. */
 export function buildImportPreview(rawRows: Record<string, string>[]): ImportPreview {
   const seenSkus = new Set<string>();
   const seenNames = new Set<string>();
@@ -170,35 +307,68 @@ export function buildImportPreview(rawRows: Record<string, string>[]): ImportPre
   };
 }
 
+/**
+ * This function had NO real-API branch at all before this pass — it
+ * unconditionally wrote to the mock db regardless of `USE_MOCK_API`, a
+ * pre-existing Phase 0/1 bug this pass also fixes. The real endpoint is
+ * `POST /api/v1/products/import/commit`, body `ImportCommitRequest{
+ * default_unit_id, opening_location_id?, rows }` — `rows` reuses the same
+ * shape `buildImportPreview` already produces (`ImportPreviewRow`), just
+ * snake_cased.
+ */
 export async function commitImport(rows: ImportRow[]): Promise<{ created: number }> {
-  const db = getDb();
-  const validRows = rows.filter((r) => r.errors.length === 0);
-  for (const row of validRows) {
-    const product: Product = {
-      id: `prod-${crypto.randomUUID()}`,
-      name: row.name,
-      aliases: [],
-      sku: row.sku,
-      barcode: null,
-      categoryId: "cat-tools",
-      categoryName: "Tools",
-      unitId: "unit-piece",
-      unitName: row.unit || "piece",
-      unitConversions: [{ unitId: "unit-piece", unitName: row.unit || "piece", factorToBase: 1 }],
-      costMinor: row.costMinor,
-      priceMinor: row.priceMinor,
-      wholesalePriceMinor: null,
-      minSellPriceMinor: null,
-      taxClass: "standard",
-      imageUrl: null,
-      notes: "",
-      reorderPoint: "0",
-      reorderQty: "0",
-      locations: [{ locationId: "loc-nyabugogo", locationName: "Nyabugogo branch", onHand: row.openingQty, reserved: "0" }],
-      onHand: row.openingQty,
-      archived: false,
-    };
-    db.products.push(product);
+  if (USE_MOCK_API) {
+    const db = getDb();
+    const validRows = rows.filter((r) => r.errors.length === 0);
+    for (const row of validRows) {
+      const product: Product = {
+        id: `prod-${crypto.randomUUID()}`,
+        name: row.name,
+        aliases: [],
+        sku: row.sku,
+        barcode: null,
+        categoryId: "cat-tools",
+        categoryName: "Tools",
+        unitId: "unit-piece",
+        unitName: row.unit || "piece",
+        unitConversions: [{ unitId: "unit-piece", unitName: row.unit || "piece", factorToBase: 1 }],
+        costMinor: row.costMinor,
+        priceMinor: row.priceMinor,
+        wholesalePriceMinor: null,
+        minSellPriceMinor: null,
+        taxClass: "standard",
+        imageUrl: null,
+        notes: "",
+        reorderPoint: "0",
+        reorderQty: "0",
+        locations: [{ locationId: "loc-nyabugogo", locationName: "Nyabugogo branch", onHand: row.openingQty, reserved: "0" }],
+        onHand: row.openingQty,
+        archived: false,
+      };
+      db.products.push(product);
+    }
+    return mockDelay({ created: validRows.length });
   }
-  return mockDelay({ created: validRows.length });
+  const { unitNameById } = await getCategoryUnitLookups();
+  const defaultUnitId = [...unitNameById.keys()][0] ?? "";
+  const raw = await apiRequest<unknown>("POST", "/api/v1/products/import/commit", {
+    body: {
+      default_unit_id: defaultUnitId,
+      opening_location_id: DEFAULT_LOCATION_ID,
+      rows: rows.map((r) => ({
+        row_number: r.rowNumber,
+        name: r.name,
+        sku: r.sku,
+        unit: r.unit,
+        cost_price_minor: r.costMinor,
+        selling_price_minor: r.priceMinor,
+        opening_quantity: r.openingQty,
+        errors: r.errors,
+        is_duplicate: r.isDuplicate,
+      })),
+    },
+    idempotencyKey: newIdempotencyKey(),
+  });
+  const result = schemas.ImportCommitResult.parse(raw);
+  return { created: result.created };
 }

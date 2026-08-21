@@ -1,4 +1,4 @@
-import { apiRequest, USE_MOCK_API } from "./config";
+import { USE_MOCK_API } from "./config";
 import { mockDelay } from "../mock/store";
 import type { OnboardingState } from "./types";
 
@@ -6,11 +6,16 @@ const STORAGE_KEY = "operatoros.onboarding.v1";
 
 /**
  * Spec D.2: "Onboarding state is stored server-side so it resumes on any
- * device." The mock stands that in with localStorage — genuinely persists
- * across a reload in this browser (closer to the real behaviour than an
- * in-memory-only store would be), clearly not the real cross-device story.
- * Swap point for the real backend: replace both functions' mock branch with
- * a GET/PUT against a real `/api/v1/onboarding` resource.
+ * device." There is NO `/api/v1/onboarding` (or any onboarding-shaped)
+ * route anywhere in apps/api — confirmed against the full 95-route
+ * openapi.json surface, not just this file's old guess. This is a real,
+ * disclosed Phase 0 gap that predates Phase 2, not something this pass
+ * introduces. Since blocking the app's entire first-run flow behind a
+ * real-API build that can never complete onboarding would be strictly
+ * worse than same-browser persistence, the real-API branch below falls
+ * back to the SAME localStorage mechanism the mock uses, rather than
+ * throwing — clearly commented as a stand-in, not a real cross-device
+ * implementation. See docs/DECISIONS.md.
  */
 function readLocal(): OnboardingState | null {
   if (typeof window === "undefined") return null;
@@ -41,7 +46,10 @@ export const EMPTY_ONBOARDING_STATE: OnboardingState = {
 
 export async function getOnboardingState(): Promise<OnboardingState> {
   if (USE_MOCK_API) return mockDelay(readLocal() ?? EMPTY_ONBOARDING_STATE, 60);
-  return apiRequest<OnboardingState>("GET", "/api/v1/onboarding");
+  // No real endpoint exists (see top-of-file comment) — same localStorage
+  // fallback as the mock branch, not a network call to a route that
+  // doesn't exist.
+  return readLocal() ?? EMPTY_ONBOARDING_STATE;
 }
 
 export async function saveOnboardingState(state: OnboardingState): Promise<OnboardingState> {
@@ -49,7 +57,8 @@ export async function saveOnboardingState(state: OnboardingState): Promise<Onboa
     writeLocal(state);
     return mockDelay(state, 60);
   }
-  return apiRequest<OnboardingState>("PUT", "/api/v1/onboarding", { body: state });
+  writeLocal(state);
+  return state;
 }
 
 export function resetOnboardingLocal() {
