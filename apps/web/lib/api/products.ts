@@ -256,11 +256,28 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
   return mapProductOut(schemas.ProductOut.parse(raw), categoryNameById, unitNameById);
 }
 
-/** Client-side CSV parse-and-validate preview per D.2 Step 3 — the real commit still goes through the API. Pure local computation, no API call — unchanged by USE_MOCK_API either way. */
+/**
+ * Client-side CSV parse-and-validate preview per D.2 Step 3 — the real
+ * commit still goes through the API.
+ *
+ * The "already in your catalog" half of duplicate detection can only run
+ * against a catalog this function can actually see. Reading `getDb()`
+ * unconditionally meant that against a real backend it compared uploads to
+ * the *demo seed* catalog — flagging rows as duplicates of products that do
+ * not exist in the business's real data. That was not merely a misleading
+ * preview: `commitImport` forwards `is_duplicate` to the API, and
+ * `products_import.py::commit_import` skips every row carrying it, so those
+ * rows were silently dropped from a real import for a fabricated reason.
+ * In real mode the client therefore checks only what it can genuinely know
+ * — duplicates *within the uploaded file* — and leaves catalog duplicates
+ * to the backend, which re-checks them against live data at commit anyway.
+ */
 export function buildImportPreview(rawRows: Record<string, string>[]): ImportPreview {
   const seenSkus = new Set<string>();
   const seenNames = new Set<string>();
-  const existingSkus = new Set(getDb().products.map((p) => p.sku.toLowerCase()));
+  const existingSkus = USE_MOCK_API
+    ? new Set(getDb().products.map((p) => p.sku.toLowerCase()))
+    : new Set<string>();
   const rows: ImportRow[] = rawRows.map((raw, i) => {
     const errors: string[] = [];
     const name = (raw.name ?? "").trim();
