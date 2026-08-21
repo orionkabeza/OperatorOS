@@ -25,7 +25,7 @@ Run these before every commit — all four must be clean:
 
 ```
 npm run typecheck:web
-npm run lint:web          # next lint + the custom no-arbitrary-Tailwind-value gate
+npm run lint:web          # next lint + no-arbitrary-Tailwind-value gate + generated-API-client freshness gate
 npm run build:web
 ```
 
@@ -59,10 +59,25 @@ Every screen (Onboarding, Counter, Stock Room, Till sessions, Close the Shop, Ov
 
 - `apps/web/lib/api/*.ts` is the typed client — one file per domain (`products.ts`, `sales.ts`, `day.ts`, `till.ts`, `stock.ts`, `customers.ts`, `receipts.ts`, `overview.ts`, `onboarding.ts`), each exporting plain async functions (`listProducts()`, `recordSale()`, `openDay()`, ...) with request/response types in `lib/api/types.ts`.
 - `apps/web/lib/mock/` is the mock itself: `seed.ts` has realistic Kigali hardware-store demo data (cement, rebar, paint, tools, plumbing, electrical; RWF pricing), `store.ts` is a mutable in-memory "ledger" that mirrors what the real projections will do (a sale decrements stock and updates the till/customer balance in the same call, day-close computes real variance, etc.) — see `docs/DECISIONS.md` for why this is a hand-rolled adapter rather than MSW.
-- `lib/api/config.ts`'s `USE_MOCK_API` constant (`!process.env.NEXT_PUBLIC_API_BASE_URL`) is the *only* place mock-vs-real is decided — every `lib/api/*.ts` function branches there. Set `NEXT_PUBLIC_API_BASE_URL` once `apps/api` is reachable and every function's real-`fetch` branch (already written, just unexercised so far) goes live with no component changes.
+- `lib/api/config.ts`'s `USE_MOCK_API` constant (`!process.env.NEXT_PUBLIC_API_BASE_URL`) is the *only* place mock-vs-real is decided — every `lib/api/*.ts` function branches there. Set `NEXT_PUBLIC_API_BASE_URL` once `apps/api` is reachable and every function's real branch (wired to the true `apps/api` routes/shapes and validated through the generated Zod client — see "The generated OpenAPI client" below) goes live with no component changes. A handful of frontend capabilities have no real backend counterpart at all (park a sale, list past stock-takes/transfers, MoMo mark-as-cash/void, customer/broadcast features, etc.) — their real branch throws a clear `notSupportedByBackend` error rather than either calling a route that doesn't exist or silently no-opping; see `docs/DECISIONS.md`'s known-gaps entry for the full list.
 - The mock resets on every full page reload (a plain module-level `let db` in `store.ts`, deliberately not persisted to localStorage/IndexedDB) — expected, not a bug: each Playwright test navigates fresh and gets a clean slate.
 - **First-ever sign-in always goes to Onboarding, not the Shop Floor** (spec D.1) — `lib/api/onboarding.ts` persists progress to `localStorage` (the mock's stand-in for "server-side, resumes on any device") so it survives a reload in the same browser. `e2e/helpers.ts`'s `completeOnboarding()` walks the minimum path (fill Step 1, skip 2–5) for tests that just need to reach the Shop Floor.
 - Manager-PIN-gated flows (discount above threshold, credit-limit override) use a hardcoded demo PIN — `DEMO_MANAGER_PIN` in `lib/constants.ts` (currently `9999`) — same spirit as `demo-auth-store.ts`, must be deleted once real role/permission-scoped PIN verification exists.
+
+### The generated OpenAPI client (real-API branch)
+
+`apps/web/lib/api/generated/client.ts` is generated from `apps/api/openapi.json` by `openapi-zod-client` and **committed** — you do NOT need Python or an `apps/api` venv to `npm run typecheck:web`/`test:web`/`build:web`, only to regenerate this file after a backend change. Every `lib/api/*.ts` function's real-API (`USE_MOCK_API === false`) branch validates its response through this file's `schemas.*` (Zod, runtime-validated — the Phase 0 rule this fulfills: frontend validation generated from the backend's OpenAPI spec, never hand-written) while still using the existing hand-written `apiRequest()` (`config.ts`) as the actual transport, so credentials/`Idempotency-Key`/error handling stay in one place.
+
+**Regenerate after any `apps/api` schema/route change:**
+
+```
+cd apps/api
+.venv/Scripts/python.exe scripts/export_openapi.py     # regenerates apps/api/openapi.json
+cd ../../apps/web
+npm run generate:api-client                             # regenerates lib/api/generated/client.ts
+```
+
+Commit both files together. `npm run check:api-client-fresh` (wired into `npm run lint:web`) fails the build if `apps/api/openapi.json` changed but `lib/api/generated/client.ts` wasn't regenerated to match — the same "keep it honest" gate `no-float-money` is on the backend. Never hand-edit the generated file; it's overwritten wholesale on every regen.
 
 ### Phase 1 e2e coverage
 
