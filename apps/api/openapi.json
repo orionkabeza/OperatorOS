@@ -5641,6 +5641,144 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/pay/{token}": {
+      "get": {
+        "operationId": "get_pay_link_page_api_pay__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayLinkPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pay Link Page",
+        "tags": [
+          "pay"
+        ]
+      }
+    },
+    "/api/pay/{token}/request-payment": {
+      "post": {
+        "description": "Kicks off the sandbox provider's simulated USSD push (plan \u00a70.3/\n\u00a70.5) against this pay link's amount. `momo_external_id` is stamped\nonto the row BEFORE the request is made so the settlement webhook\n(arriving seconds later, asynchronously) has something to match\nagainst -- see api/routers/momo.py::process_momo_webhook's pay-link\nsettlement branch.",
+        "operationId": "request_payment_api_pay__token__request_payment_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayLinkRequestPaymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayLinkRequestPaymentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Payment",
+        "tags": [
+          "pay"
+        ]
+      }
+    },
+    "/api/pay/{token}/status": {
+      "get": {
+        "description": "Polled by the pay-link page while waiting for the sandbox\nsettlement to land -- deliberately re-resolves the live row rather\nthan trusting anything cached client-side.",
+        "operationId": "get_pay_link_status_api_pay__token__status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayLinkStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pay Link Status",
+        "tags": [
+          "pay"
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "login_api_v1_auth_login_post",
@@ -11429,144 +11567,6 @@
         "summary": "Health",
         "tags": [
           "health"
-        ]
-      }
-    },
-    "/pay/{token}": {
-      "get": {
-        "operationId": "get_pay_link_page_pay__token__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "token",
-            "required": true,
-            "schema": {
-              "title": "Token",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PayLinkPageOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Pay Link Page",
-        "tags": [
-          "pay"
-        ]
-      }
-    },
-    "/pay/{token}/request-payment": {
-      "post": {
-        "description": "Kicks off the sandbox provider's simulated USSD push (plan \u00a70.3/\n\u00a70.5) against this pay link's amount. `momo_external_id` is stamped\nonto the row BEFORE the request is made so the settlement webhook\n(arriving seconds later, asynchronously) has something to match\nagainst -- see api/routers/momo.py::process_momo_webhook's pay-link\nsettlement branch.",
-        "operationId": "request_payment_pay__token__request_payment_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "token",
-            "required": true,
-            "schema": {
-              "title": "Token",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PayLinkRequestPaymentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PayLinkRequestPaymentOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Request Payment",
-        "tags": [
-          "pay"
-        ]
-      }
-    },
-    "/pay/{token}/status": {
-      "get": {
-        "description": "Polled by the pay-link page while waiting for the sandbox\nsettlement to land -- deliberately re-resolves the live row rather\nthan trusting anything cached client-side.",
-        "operationId": "get_pay_link_status_pay__token__status_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "token",
-            "required": true,
-            "schema": {
-              "title": "Token",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PayLinkStatusOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Pay Link Status",
-        "tags": [
-          "pay"
         ]
       }
     }

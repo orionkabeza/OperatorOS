@@ -1,4 +1,4 @@
-"""`/pay/{token}` is the second of the two places this phase intentionally
+"""`/api/pay/{token}` is the second of the two places this phase intentionally
 opens a hole in the normal tenant-auth wall (plan §0.5) -- dedicated
 scrutiny beyond the generic cross-tenant isolation suite, which doesn't
 attempt this route at all (no `get_current_context` dependency, no path
@@ -118,7 +118,7 @@ async def test_valid_pay_link_returns_the_correct_amount_and_names(
     customer_id = await _setup_customer_with_debt(client, headers, tenant_a)
     token = await _create_pay_link(client, headers, tenant_a, customer_id)
 
-    resp = await client.get(f"/pay/{token}")
+    resp = await client.get(f"/api/pay/{token}")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["amount_minor"] == 118000
@@ -135,13 +135,13 @@ async def test_pay_link_requires_no_authentication_header(
     token = await _create_pay_link(client, headers, tenant_a, customer_id)
 
     # No Authorization header at all -- genuinely public.
-    resp = await client.get(f"/pay/{token}")
+    resp = await client.get(f"/api/pay/{token}")
     assert resp.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_garbage_token_is_rejected(client: AsyncClient) -> None:
-    resp = await client.get("/pay/not-a-real-token-at-all")
+    resp = await client.get("/api/pay/not-a-real-token-at-all")
     assert resp.status_code == 404
 
 
@@ -161,7 +161,7 @@ async def test_tampered_token_is_rejected(client: AsyncClient, tenant_a: SeededT
         "attacker-does-not-know-the-real-secret",
         algorithm="HS256",
     )
-    resp = await client.get(f"/pay/{forged}")
+    resp = await client.get(f"/api/pay/{forged}")
     assert resp.status_code == 404
 
 
@@ -193,7 +193,7 @@ async def test_expired_token_is_rejected(client: AsyncClient, tenant_a: SeededTe
             algorithm=settings.jwt_algorithm,
         )
 
-    resp = await client.get(f"/pay/{already_expired_token}")
+    resp = await client.get(f"/api/pay/{already_expired_token}")
     assert resp.status_code == 404
 
 
@@ -237,7 +237,7 @@ async def test_a_wrong_business_id_claim_paired_with_another_tenants_real_link_i
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
-    resp = await client.get(f"/pay/{mismatched_token}")
+    resp = await client.get(f"/api/pay/{mismatched_token}")
     assert resp.status_code == 404
 
 
@@ -249,7 +249,7 @@ async def test_paid_link_cannot_be_reused_even_with_a_still_valid_token(
     customer_id = await _setup_customer_with_debt(client, headers, tenant_a)
     token = await _create_pay_link(client, headers, tenant_a, customer_id)
 
-    resp = await client.get(f"/pay/{token}")
+    resp = await client.get(f"/api/pay/{token}")
     assert resp.status_code == 200
 
     # Mark it paid directly (simulating a completed settlement) -- the
@@ -267,5 +267,5 @@ async def test_paid_link_cannot_be_reused_even_with_a_still_valid_token(
         pay_link.paid_at = datetime.now(UTC)
         await session.flush()
 
-    resp_after = await client.get(f"/pay/{token}")
+    resp_after = await client.get(f"/api/pay/{token}")
     assert resp_after.status_code == 404, "a paid link's token must stop working"

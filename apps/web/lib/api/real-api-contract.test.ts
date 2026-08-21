@@ -93,7 +93,7 @@ describe("generated Zod schemas validate realistic backend-shaped payloads", () 
 });
 
 describe("pay-link flow — the deliberately-unauthenticated, most security-sensitive surface", () => {
-  it("getPayLink hits the bare /pay/{token} path (never /api/v1/pay/...)", async () => {
+  it("getPayLink hits /api/pay/{token} (never /api/v1/pay/...)", async () => {
     const synthetic = {
       business_name: "Kigali Hardware Co",
       customer_name: "Jean Bosco",
@@ -101,7 +101,7 @@ describe("pay-link flow — the deliberately-unauthenticated, most security-sens
       status: "pending",
       expires_at: "2026-08-28T00:00:00Z",
     };
-    responseFor({ "GET /pay/tok_abc123": synthetic });
+    responseFor({ "GET /api/pay/tok_abc123": synthetic });
     const { getPayLink } = await import("./pay");
     const details = await getPayLink("tok_abc123");
     expect(details).toEqual({
@@ -113,25 +113,27 @@ describe("pay-link flow — the deliberately-unauthenticated, most security-sens
       expiresAt: "2026-08-28T00:00:00Z",
     });
     // The security-critical assertion: confirms the call never touched
-    // `/api/v1/pay/...` — the wrong, authenticated-namespace prefix every
-    // one of these functions used before this pass.
-    expect(apiRequestMock).toHaveBeenCalledWith("GET", "/pay/tok_abc123");
+    // `/api/v1/pay/...` — the versioned, authenticated-namespace prefix
+    // this route must never share, even though both now live under `/api`
+    // for same-origin nginx routing (docs/DECISIONS.md "Same-origin
+    // cutover: /pay path rename").
+    expect(apiRequestMock).toHaveBeenCalledWith("GET", "/api/pay/tok_abc123");
   });
 
-  it("submitPayLink posts only { phone } to /pay/{token}/request-payment — no method/provider field on the real wire", async () => {
+  it("submitPayLink posts only { phone } to /api/pay/{token}/request-payment — no method/provider field on the real wire", async () => {
     const synthetic = { external_id: "ext-999", status: "pending" };
-    responseFor({ "POST /pay/tok_abc123/request-payment": synthetic });
+    responseFor({ "POST /api/pay/tok_abc123/request-payment": synthetic });
     const { submitPayLink } = await import("./pay");
     const result = await submitPayLink("tok_abc123", "momo", "+250780000001");
     expect(result).toEqual({ status: "pending_confirmation" });
-    expect(apiRequestMock).toHaveBeenCalledWith("POST", "/pay/tok_abc123/request-payment", {
+    expect(apiRequestMock).toHaveBeenCalledWith("POST", "/api/pay/tok_abc123/request-payment", {
       body: { phone: "+250780000001" },
     });
   });
 
-  it("getPayLinkStatus hits the bare /pay/{token}/status path", async () => {
+  it("getPayLinkStatus hits /api/pay/{token}/status", async () => {
     const synthetic = { status: "paid", paid_at: "2026-08-21T10:00:00Z" };
-    responseFor({ "GET /pay/tok_abc123/status": synthetic });
+    responseFor({ "GET /api/pay/tok_abc123/status": synthetic });
     const { getPayLinkStatus } = await import("./pay");
     const status = await getPayLinkStatus("tok_abc123");
     expect(status).toBe("paid");

@@ -17,7 +17,7 @@ correctness once it fires).
 monkeypatched to a no-op for this test: `celery_app.py` deliberately
 keeps `task_always_eager = False` (a real deployment runs a real worker
 against real Redis), and this test environment has no Redis broker
-running -- calling the real `POST /pay/{token}/request-payment` endpoint
+running -- calling the real `POST /api/pay/{token}/request-payment` endpoint
 unpatched hangs for minutes retrying a connection that will never
 succeed. No other test in this suite exercises `apply_async` against a
 real broker either (`test_projection_audit_task.py` calls the task's
@@ -148,7 +148,7 @@ async def test_pay_link_settles_via_the_sandbox_provider_and_moves_both_projecti
         momo_before_balance = momo_before_row.balance_minor if momo_before_row else 0
 
     request_resp = await client.post(
-        f"/pay/{token}/request-payment", json={"phone": "+250788999999"}
+        f"/api/pay/{token}/request-payment", json={"phone": "+250788999999"}
     )
     assert request_resp.status_code == 201, request_resp.text
     external_id = request_resp.json()["external_id"]
@@ -196,9 +196,9 @@ async def test_pay_link_settles_via_the_sandbox_provider_and_moves_both_projecti
         assert txn.status == "matched"
         assert txn.matched_to_type == "pay_link"
 
-    status_resp = await client.get(f"/pay/{token}/status")
+    status_resp = await client.get(f"/api/pay/{token}/status")
     assert status_resp.json()["status"] == "paid"
 
     # The token is now dead even though it's still cryptographically valid.
-    page_resp = await client.get(f"/pay/{token}")
+    page_resp = await client.get(f"/api/pay/{token}")
     assert page_resp.status_code == 404

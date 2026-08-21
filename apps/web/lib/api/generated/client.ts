@@ -15,19 +15,12 @@
 import { makeApi, Zodios, type ZodiosOptions } from "@zodios/core";
 import { z } from "zod";
 
-const LoginRequest = z.object({
-  business_slug: z.string(),
-  device_id: z.string(),
-  identifier: z.string(),
-  remember_device: z.boolean().optional().default(false),
-  secret: z.string(),
-});
-const TokenPair = z.object({
-  access_token: z.string(),
-  challenge_token: z.union([z.string(), z.null()]).optional(),
-  refresh_token: z.string(),
-  token_type: z.string().optional().default("bearer"),
-  totp_required: z.boolean().optional().default(false),
+const PayLinkPageOut = z.object({
+  amount_minor: z.number().int(),
+  business_name: z.string(),
+  customer_name: z.string(),
+  expires_at: z.string(),
+  status: z.string(),
 });
 const ValidationError = z
   .object({
@@ -42,6 +35,29 @@ const HTTPValidationError = z
   .object({ detail: z.array(ValidationError) })
   .partial()
   .passthrough();
+const PayLinkRequestPaymentRequest = z.object({ phone: z.string() });
+const PayLinkRequestPaymentOut = z.object({
+  external_id: z.string(),
+  status: z.string(),
+});
+const PayLinkStatusOut = z.object({
+  paid_at: z.union([z.string(), z.null()]),
+  status: z.string(),
+});
+const LoginRequest = z.object({
+  business_slug: z.string(),
+  device_id: z.string(),
+  identifier: z.string(),
+  remember_device: z.boolean().optional().default(false),
+  secret: z.string(),
+});
+const TokenPair = z.object({
+  access_token: z.string(),
+  challenge_token: z.union([z.string(), z.null()]).optional(),
+  refresh_token: z.string(),
+  token_type: z.string().optional().default("bearer"),
+  totp_required: z.boolean().optional().default(false),
+});
 const LogoutRequest = z.object({
   business_id: z.string(),
   refresh_token: z.string(),
@@ -913,28 +929,16 @@ const GrantRequest = z.object({
   permission_key: z.string(),
 });
 const RoleChangeRequest = z.object({ role_key: z.string() });
-const PayLinkPageOut = z.object({
-  amount_minor: z.number().int(),
-  business_name: z.string(),
-  customer_name: z.string(),
-  expires_at: z.string(),
-  status: z.string(),
-});
-const PayLinkRequestPaymentRequest = z.object({ phone: z.string() });
-const PayLinkRequestPaymentOut = z.object({
-  external_id: z.string(),
-  status: z.string(),
-});
-const PayLinkStatusOut = z.object({
-  paid_at: z.union([z.string(), z.null()]),
-  status: z.string(),
-});
 
 export const schemas = {
-  LoginRequest,
-  TokenPair,
+  PayLinkPageOut,
   ValidationError,
   HTTPValidationError,
+  PayLinkRequestPaymentRequest,
+  PayLinkRequestPaymentOut,
+  PayLinkStatusOut,
+  LoginRequest,
+  TokenPair,
   LogoutRequest,
   RefreshRequest,
   TotpVerifyRequest,
@@ -1062,13 +1066,86 @@ export const schemas = {
   MeOut,
   GrantRequest,
   RoleChangeRequest,
-  PayLinkPageOut,
-  PayLinkRequestPaymentRequest,
-  PayLinkRequestPaymentOut,
-  PayLinkStatusOut,
 };
 
 const endpoints = makeApi([
+  {
+    method: "get",
+    path: "/api/pay/:token",
+    alias: "get_pay_link_page_api_pay__token__get",
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "token",
+        type: "Path",
+        schema: z.string(),
+      },
+    ],
+    response: PayLinkPageOut,
+    errors: [
+      {
+        status: 422,
+        description: `Validation Error`,
+        schema: HTTPValidationError,
+      },
+    ],
+  },
+  {
+    method: "post",
+    path: "/api/pay/:token/request-payment",
+    alias: "request_payment_api_pay__token__request_payment_post",
+    description: `Kicks off the sandbox provider&#x27;s simulated USSD push (plan §0.3/
+§0.5) against this pay link&#x27;s amount. &#x60;momo_external_id&#x60; is stamped
+onto the row BEFORE the request is made so the settlement webhook
+(arriving seconds later, asynchronously) has something to match
+against -- see api/routers/momo.py::process_momo_webhook&#x27;s pay-link
+settlement branch.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "body",
+        type: "Body",
+        schema: z.object({ phone: z.string() }),
+      },
+      {
+        name: "token",
+        type: "Path",
+        schema: z.string(),
+      },
+    ],
+    response: PayLinkRequestPaymentOut,
+    errors: [
+      {
+        status: 422,
+        description: `Validation Error`,
+        schema: HTTPValidationError,
+      },
+    ],
+  },
+  {
+    method: "get",
+    path: "/api/pay/:token/status",
+    alias: "get_pay_link_status_api_pay__token__status_get",
+    description: `Polled by the pay-link page while waiting for the sandbox
+settlement to land -- deliberately re-resolves the live row rather
+than trusting anything cached client-side.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "token",
+        type: "Path",
+        schema: z.string(),
+      },
+    ],
+    response: PayLinkStatusOut,
+    errors: [
+      {
+        status: 422,
+        description: `Validation Error`,
+        schema: HTTPValidationError,
+      },
+    ],
+  },
   {
     method: "post",
     path: "/api/v1/auth/login",
@@ -3536,83 +3613,6 @@ only ever asserted about in a unit test.`,
     alias: "health_health_get",
     requestFormat: "json",
     response: z.record(z.string()),
-  },
-  {
-    method: "get",
-    path: "/pay/:token",
-    alias: "get_pay_link_page_pay__token__get",
-    requestFormat: "json",
-    parameters: [
-      {
-        name: "token",
-        type: "Path",
-        schema: z.string(),
-      },
-    ],
-    response: PayLinkPageOut,
-    errors: [
-      {
-        status: 422,
-        description: `Validation Error`,
-        schema: HTTPValidationError,
-      },
-    ],
-  },
-  {
-    method: "post",
-    path: "/pay/:token/request-payment",
-    alias: "request_payment_pay__token__request_payment_post",
-    description: `Kicks off the sandbox provider&#x27;s simulated USSD push (plan §0.3/
-§0.5) against this pay link&#x27;s amount. &#x60;momo_external_id&#x60; is stamped
-onto the row BEFORE the request is made so the settlement webhook
-(arriving seconds later, asynchronously) has something to match
-against -- see api/routers/momo.py::process_momo_webhook&#x27;s pay-link
-settlement branch.`,
-    requestFormat: "json",
-    parameters: [
-      {
-        name: "body",
-        type: "Body",
-        schema: z.object({ phone: z.string() }),
-      },
-      {
-        name: "token",
-        type: "Path",
-        schema: z.string(),
-      },
-    ],
-    response: PayLinkRequestPaymentOut,
-    errors: [
-      {
-        status: 422,
-        description: `Validation Error`,
-        schema: HTTPValidationError,
-      },
-    ],
-  },
-  {
-    method: "get",
-    path: "/pay/:token/status",
-    alias: "get_pay_link_status_pay__token__status_get",
-    description: `Polled by the pay-link page while waiting for the sandbox
-settlement to land -- deliberately re-resolves the live row rather
-than trusting anything cached client-side.`,
-    requestFormat: "json",
-    parameters: [
-      {
-        name: "token",
-        type: "Path",
-        schema: z.string(),
-      },
-    ],
-    response: PayLinkStatusOut,
-    errors: [
-      {
-        status: 422,
-        description: `Validation Error`,
-        schema: HTTPValidationError,
-      },
-    ],
   },
 ]);
 

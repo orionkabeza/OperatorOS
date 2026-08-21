@@ -1,15 +1,23 @@
-"""The public pay-link page (spec D.6.5, plan §0.5).
+"""The public pay-link API (spec D.6.5, plan §0.5).
 
-`/pay/{token}` and its sibling actions are the FIRST of the two places
-this phase intentionally opens a hole in the normal tenant-auth wall (the
-second is the MoMo webhook, `api/routers/momo.py`) -- no bearer token, no
-business_id header, nothing beyond the signed `token` itself, which
-`security/tokens.py::decode_pay_link_token` verifies before any database
-query runs (see that module and models/paylink.py's docstrings, and
-docs/DECISIONS.md's "Pay-link tokens are signed JWTs" entry). Every route
-here re-checks the referenced `PayLink` row's LIVE status -- pending only
--- on every call, so a still-cryptographically-valid, not-yet-expired
-token stops working the instant its link is paid or expires.
+Mounted at `/api/pay/{token}` -- NOT `/api/v1`, to keep it visually
+distinct from the versioned, JWT-authenticated API despite living under
+the same `/api` nginx routing prefix (see docs/DECISIONS.md "Same-origin
+cutover: /pay path rename"). The customer-facing PAGE stays at
+`/pay/{token}` in `apps/web` -- unrelated and unchanged; that page calls
+this API from the browser.
+
+`/api/pay/{token}` and its sibling actions are the FIRST of the two
+places this phase intentionally opens a hole in the normal tenant-auth
+wall (the second is the MoMo webhook, `api/routers/momo.py`) -- no
+bearer token, no business_id header, nothing beyond the signed `token`
+itself, which `security/tokens.py::decode_pay_link_token` verifies
+before any database query runs (see that module and
+models/paylink.py's docstrings, and docs/DECISIONS.md's "Pay-link tokens
+are signed JWTs" entry). Every route here re-checks the referenced
+`PayLink` row's LIVE status -- pending only -- on every call, so a
+still-cryptographically-valid, not-yet-expired token stops working the
+instant its link is paid or expires.
 """
 
 from __future__ import annotations
@@ -31,7 +39,7 @@ from operatoros_api.schemas.pay import (
 )
 from operatoros_api.security.tokens import TokenError, decode_pay_link_token
 
-router = APIRouter(prefix="/pay", tags=["pay"])
+router = APIRouter(prefix="/api/pay", tags=["pay"])
 
 
 async def _resolve_live_pay_link(token: str) -> tuple[str, PayLink]:

@@ -248,7 +248,7 @@ async def test_pay_link_alg_none_is_rejected(client: AsyncClient, tenant_a: Seed
     }
     forged = jwt.encode(payload, key=None, algorithm="none", headers=forged_header)
 
-    resp = await client.get(f"/pay/{forged}")
+    resp = await client.get(f"/api/pay/{forged}")
     assert (
         resp.status_code == 404
     ), f"alg=none token was NOT rejected: {resp.status_code} {resp.text}"
@@ -287,7 +287,7 @@ async def test_pay_link_flipped_signature_byte_is_rejected(
     replacement = "A" if last_char != "A" else "B"
     tampered = f"{header_b64}.{payload_b64}.{sig_b64[:-1]}{replacement}"
 
-    resp = await client.get(f"/pay/{tampered}")
+    resp = await client.get(f"/api/pay/{tampered}")
     assert resp.status_code == 404, resp.text
 
 
@@ -446,7 +446,7 @@ async def test_pay_link_page_never_shows_the_wrong_business_name(
     assert link_resp.status_code == 201, link_resp.text
     token = link_resp.json()["token"]
 
-    page_resp = await client.get(f"/pay/{token}")
+    page_resp = await client.get(f"/api/pay/{token}")
     assert page_resp.status_code == 200, page_resp.text
     assert page_resp.json()["business_name"] == tenant_a.business.name
     assert page_resp.json()["business_name"] != tenant_b.business.name

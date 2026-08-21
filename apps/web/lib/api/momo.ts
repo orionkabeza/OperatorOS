@@ -81,7 +81,7 @@ export async function voidMomoTransaction(momoTransactionId: string): Promise<Mo
 /**
  * No standalone "request a MoMo payment" endpoint exists outside a pay
  * link — the only real request-payment path is `POST
- * /pay/{token}/request-payment` (pay.ts), which is deliberately
+ * /api/pay/{token}/request-payment` (pay.ts), which is deliberately
  * public/token-scoped (docs/DECISIONS.md "Pay-link tokens are signed
  * JWTs") for an unauthenticated customer to act on, a genuinely different
  * security model from an authenticated cashier requesting a push against
