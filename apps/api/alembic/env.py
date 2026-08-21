@@ -27,7 +27,14 @@ _url_override = config.attributes.get("sqlalchemy.url") or os.environ.get(
     "OPERATOROS_DATABASE_URL_MIGRATE"
 )
 if _url_override:
-    config.set_main_option("sqlalchemy.url", _url_override)
+    # config.set_main_option writes through a ConfigParser section, whose
+    # interpolation syntax treats a bare `%` as the start of a `%(name)s`
+    # reference -- a real deployment URL with a percent-encoded password
+    # (e.g. `%40` for a literal `@`) would otherwise crash here with
+    # "invalid interpolation syntax" before a single migration runs.
+    # Escaping `%` as `%%` is ConfigParser's own documented escape; it's
+    # decoded back to a single `%` on every subsequent get_main_option.
+    config.set_main_option("sqlalchemy.url", _url_override.replace("%", "%%"))
 
 
 def include_object(object, name, type_, reflected, compare_to):  # noqa: A002
