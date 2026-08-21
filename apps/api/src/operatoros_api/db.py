@@ -41,7 +41,23 @@ def get_engine(database_url: str | None = None) -> AsyncEngine:
     global _engine
     if _engine is None:
         _engine = create_async_engine(
-            database_url or get_settings().database_url, pool_pre_ping=True
+            database_url or get_settings().database_url,
+            pool_pre_ping=True,
+            # asyncpg caches prepared statements per physical connection by
+            # a sequential name (__asyncpg_stmt_N__). Under a transaction-
+            # mode pooler (e.g. Supabase's pgbouncer on :6543 -- what this
+            # app's own DECISIONS.md recommends for scaling past the
+            # session pooler's connection cap), the "connection" asyncpg
+            # sees can be a different physical backend on every checkout,
+            # so a statement name reused from a prior checkout collides
+            # with one a DIFFERENT session already prepared under the same
+            # name -- DuplicatePreparedStatementError. Disabling the cache
+            # is the documented fix (asyncpg's own error message links
+            # here: https://sqlalche.me/e/20/f405); found running the
+            # first real request against a transaction-pooled production
+            # database, not caught locally since tests run against a
+            # single embedded Postgres with no pooler in front of it.
+            connect_args={"statement_cache_size": 0},
         )
     return _engine
 
