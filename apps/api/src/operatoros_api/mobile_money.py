@@ -20,6 +20,8 @@ from typing import Protocol
 
 import structlog
 
+from operatoros_api.security.identifiers import hash_identifier
+
 logger = structlog.get_logger("operatoros_api.mobile_money")
 
 SANDBOX_PROVIDER_KEY = "sandbox_momo"
@@ -72,7 +74,7 @@ class SandboxMomoProvider:
         logger.info(
             "momo_sandbox_payment_requested",
             business_id=business_id,
-            phone=phone,
+            phone_hash=hash_identifier(phone),
             amount_minor=amount_minor,
             external_id=external_id,
         )

@@ -10,8 +10,17 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# These mirror the two local-dev-only Field defaults below, byte-for-byte,
+# so the fail-closed check further down can detect "still using the
+# committed default" outside env=local. Not real credentials -- bandit's
+# hardcoded-password heuristic matches on the variable name alone; nosec
+# is scoped to these two lines, not the rule globally (same convention as
+# security/webhooks.py's _DUMMY_SECRET).
+_INSECURE_DEFAULT_JWT_SECRET = "local-dev-only-secret-change-me-please"  # nosec B105
+_INSECURE_DEFAULT_ENCRYPTION_KEY = "3OIG0lvVcsGpLImnOWQHs7HqnEhJXlwvHfK7hewA1vg="  # nosec B105
 
 
 class Settings(BaseSettings):
@@ -63,10 +72,35 @@ class Settings(BaseSettings):
     @field_validator("jwt_secret")
     @classmethod
     def _warn_default_secret(cls, v: str) -> str:
-        # Not a hard failure here (tests/local dev rely on the default) —
-        # deployment tooling is responsible for asserting a real secret is
-        # set outside `env=local`. See docs/RUNBOOK.md.
+        # The actual enforcement is the fail-closed model_validator below —
+        # this stays a no-op field validator so the field-level intent
+        # (jwt_secret is meant to be overridden outside local dev) is
+        # documented next to the field itself.
         return v
+
+    @model_validator(mode="after")
+    def _fail_closed_on_default_secrets_outside_local(self) -> Settings:
+        # A hard failure, not a warning: tests/local dev rely on these
+        # defaults to work out of the box with zero setup, but shipping
+        # either default to a real environment would mean every deployment
+        # shares the same publicly-visible (this file is committed) JWT
+        # signing key and encryption key. Refusing to start is the only
+        # safe behavior once `env` is anything other than "local" — a log
+        # line is easy to miss, a crashed process is not.
+        if self.env != "local":
+            insecure = []
+            if self.jwt_secret == _INSECURE_DEFAULT_JWT_SECRET:
+                insecure.append("OPERATOROS_JWT_SECRET")
+            if self.secret_encryption_key == _INSECURE_DEFAULT_ENCRYPTION_KEY:
+                insecure.append("OPERATOROS_SECRET_ENCRYPTION_KEY")
+            if insecure:
+                raise ValueError(
+                    f"Refusing to start with env={self.env!r}: the following settings are "
+                    f"still using their insecure local-dev default values: "
+                    f"{', '.join(insecure)}. Set real per-environment secrets before "
+                    "deploying outside env=local. See docs/RUNBOOK.md."
+                )
+        return self
 
 
 @lru_cache

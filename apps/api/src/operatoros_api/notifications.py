@@ -15,6 +15,8 @@ from typing import Protocol
 
 import structlog
 
+from operatoros_api.security.identifiers import hash_identifier
+
 logger = structlog.get_logger("operatoros_api.notifications")
 
 
@@ -32,7 +34,11 @@ class LoggingNotificationSender:
     async def send(self, *, channel: str, to: str, subject: str, body: str) -> str:
         message_id = f"stub-{channel}-{abs(hash((to, subject, body)))}"
         logger.info(
-            "notification_sent_stub", channel=channel, to=to, subject=subject, message_id=message_id
+            "notification_sent_stub",
+            channel=channel,
+            to_hash=hash_identifier(to),
+            subject_length=len(subject),
+            message_id=message_id,
         )
         return message_id
 
