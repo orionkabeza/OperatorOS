@@ -128,7 +128,14 @@ export function Shutter() {
             className="flex flex-col gap-16"
             onSubmit={(e) => {
               e.preventDefault();
-              signIn(phone, pin, getDeviceId(), keepSignedIn);
+              // The "+250" the user sees is a static prefix, not part of
+              // `phone`'s own state -- apps/api's identifier match is
+              // exact-string against the full E.164-ish number the phone
+              // was originally registered with (security/identifiers.py::
+              // normalize_phone), so this has to combine them before
+              // sending, not rely on the display-only prefix span.
+              const fullPhone = USE_MOCK_API ? phone : `+250${phone.replace(/\D/g, "")}`;
+              signIn(fullPhone, pin, getDeviceId(), keepSignedIn);
             }}
           >
             <p className="text-micro font-semibold uppercase tracking-tracked text-ink-soft">
