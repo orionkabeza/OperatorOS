@@ -38,10 +38,16 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, text
 
-from operatoros_api.api.deps import RequestContext, idempotency_key_header, require_capability
+from operatoros_api.api.deps import (
+    RequestContext,
+    get_redis,
+    idempotency_key_header,
+    require_capability,
+)
 from operatoros_api.api.routers.stock_stocktake import is_frozen_for_stocktake
 from operatoros_api.audit_log import append_audit_log
 from operatoros_api.capabilities import resolve_effective_capabilities
+from operatoros_api.config import get_settings
 from operatoros_api.idempotency_service import (
     claim_or_replay,
     complete,
@@ -76,6 +82,7 @@ from operatoros_api.schemas.sales import (
     SalePaymentOut,
 )
 from operatoros_api.security.passwords import verify_secret
+from operatoros_api.security.rate_limit import LockoutTracker
 
 router = APIRouter(prefix="/api/v1/sales", tags=["sales"])
 
@@ -107,19 +114,50 @@ async def _next_sequence_number(session, business_id: str) -> int:
 
 
 async def _verify_manager_override(
-    ctx: RequestContext, manager_user_id: str | None, pin: str | None, required_capability: str
+    ctx: RequestContext,
+    redis,
+    manager_user_id: str | None,
+    pin: str | None,
+    required_capability: str,
 ) -> bool:
+    """Verifies a manager's PIN for a min-price / over-discount / over-
+    credit-limit override.
+
+    Rate-limited the same way a login attempt is (`LockoutTracker`,
+    security/rate_limit.py) -- without this, a cashier who knows (or
+    enumerates) a manager's user id could brute-force their PIN with
+    unlimited attempts, since this function previously had no throttling
+    at all. The lockout key is scoped to `(business_id, manager_user_id,
+    caller_user_id)`, deliberately including the CALLER's own id: keying
+    only on `(business_id, manager_user_id)` would let any single caller
+    lock every other cashier out of ever using that manager's override by
+    repeatedly guessing wrong, which is itself a denial-of-service
+    weapon. Scoping per-caller means a bad actor can only ever lock
+    themselves out of that manager's override, not deny it to everyone
+    else.
+    """
     if not manager_user_id or not pin:
+        return False
+    settings = get_settings()
+    lockout = LockoutTracker(redis, settings.max_login_attempts, settings.lockout_minutes * 60)
+    locked, _retry_after = await lockout.is_locked(ctx.business_id, manager_user_id, ctx.user_id)
+    if locked:
         return False
     manager = await ctx.session.get(User, manager_user_id)
     if manager is None or manager.status != "active":
+        await lockout.record_failure(ctx.business_id, manager_user_id, ctx.user_id)
         return False
     if not verify_secret(pin, manager.secret_hash):
+        await lockout.record_failure(ctx.business_id, manager_user_id, ctx.user_id)
         return False
     caps = await resolve_effective_capabilities(
         ctx.session, user_id=manager.id, role_key=manager.role.key, assigned_location_ids=[]
     )
-    return caps.has(required_capability, location_id=None)
+    if not caps.has(required_capability, location_id=None):
+        await lockout.record_failure(ctx.business_id, manager_user_id, ctx.user_id)
+        return False
+    await lockout.reset(ctx.business_id, manager_user_id, ctx.user_id)
+    return True
 
 
 @dataclass
@@ -285,6 +323,7 @@ async def create_sale(
     request: Request,
     idempotency_key: str = Depends(idempotency_key_header),
     ctx: RequestContext = Depends(require_capability("sale.create")),
+    redis=Depends(get_redis),
 ) -> SaleOut:
     raw_body = await request.body()
     fingerprint = fingerprint_request("POST", "/api/v1/sales", ctx.business_id, raw_body)
@@ -333,7 +372,11 @@ async def create_sale(
     till = till_result.scalars().first()
 
     override_verified = await _verify_manager_override(
-        ctx, body.manager_override_user_id, body.manager_override_pin, "sale.price_override"
+        ctx,
+        redis,
+        body.manager_override_user_id,
+        body.manager_override_pin,
+        "sale.price_override",
     )
 
     priced = await _price_lines(ctx, body.lines, override_verified)
@@ -352,6 +395,7 @@ async def create_sale(
     ):
         discount_override_ok = await _verify_manager_override(
             ctx,
+            redis,
             body.manager_override_user_id,
             body.manager_override_pin,
             "sale.discount.over_threshold",
@@ -399,6 +443,7 @@ async def create_sale(
         if new_balance > credit_limit:
             override_ok = await _verify_manager_override(
                 ctx,
+                redis,
                 body.manager_override_user_id,
                 body.manager_override_pin,
                 "debt.credit_override",

@@ -477,6 +477,61 @@ async def test_credit_sale_over_limit_wrong_pin_is_rejected(
 
 
 @pytest.mark.asyncio
+async def test_manager_override_locks_out_after_repeated_wrong_pins(
+    client: AsyncClient, tenant_a: SeededTenant
+) -> None:
+    """`_verify_manager_override` (api/routers/sales.py) previously had no
+    rate limiting at all -- a cashier who knew a manager's user id could
+    brute-force their PIN with unlimited attempts. It now reuses the same
+    `LockoutTracker` login uses (see test_auth.py::test_lockout_after_max_failed_attempts),
+    keyed per (business, manager, caller) so this only ever locks the
+    caller's own ability to use that manager's override."""
+    headers = await auth_headers(client, tenant_a)
+    await _open_day(client, headers, tenant_a)
+    product_id = await _create_product(client, headers, tenant_a, selling_price_minor=100000)
+    await _receive_stock(client, headers, tenant_a, product_id, "10.0000")
+    customer_id = await _create_customer(client, headers, tenant_a, credit_limit_minor=50000)
+
+    def _attempt_body(pin: str) -> dict:
+        return {
+            "location_id": tenant_a.location.id,
+            "customer_id": customer_id,
+            "lines": [{"product_id": product_id, "quantity": "1.0000"}],
+            "payments": [{"method": "credit", "amount_minor": 118000}],
+            "manager_override_user_id": tenant_a.owner.id,
+            "manager_override_pin": pin,
+            "override_reason": "trying wrong pins",
+        }
+
+    for _ in range(3):
+        resp = await client.post(
+            "/api/v1/sales",
+            headers={**headers, **idempotency_headers()},
+            json=_attempt_body("000000"),
+        )
+        assert resp.status_code == 422, resp.text
+        assert "credit limit" in resp.text
+
+    # Even the manager's real PIN must now be refused -- the override
+    # itself is locked out, not just this one wrong guess.
+    locked_resp = await client.post(
+        "/api/v1/sales",
+        headers={**headers, **idempotency_headers()},
+        json=_attempt_body(tenant_a.owner_secret),
+    )
+    assert locked_resp.status_code == 422, locked_resp.text
+    assert "credit limit" in locked_resp.text
+
+    async with tenant_scoped_session(tenant_a.business.id) as session:
+        result = await session.execute(
+            select(Sale).where(
+                Sale.business_id == tenant_a.business.id, Sale.id != tenant_a.sale_id
+            )
+        )
+        assert result.first() is None, "no sale must have been created while locked out"
+
+
+@pytest.mark.asyncio
 async def test_payments_not_matching_total_are_rejected(
     client: AsyncClient, tenant_a: SeededTenant
 ) -> None:
