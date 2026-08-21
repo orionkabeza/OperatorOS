@@ -24,6 +24,33 @@ export class ApiError extends Error {
 }
 
 /**
+ * The frontend has no location-switcher UI (single-location seed data
+ * throughout Phase 0-2 — lib/mock/seed.ts's `LOCATION_ID`), but several
+ * real apps/api endpoints (day/till, sales, stock, take-payment, cashbox)
+ * require a `location_id` the UI has nowhere to source one from yet. Every
+ * real-API call needing one uses this constant until a real location
+ * picker exists — matches the mock seed's only location so mock and real
+ * point at "the same" place conceptually. See docs/DECISIONS.md.
+ */
+export const DEFAULT_LOCATION_ID = "loc-nyabugogo";
+
+/**
+ * For a frontend capability with genuinely no backend counterpart (verified
+ * against apps/api/openapi.json, not guessed) — used by the real-API branch
+ * of a handful of lib/api/*.ts functions instead of either (a) calling an
+ * endpoint that doesn't exist, or (b) silently pretending success. Throwing
+ * a clear, typed error is the honest outcome for a genuine gap: see each
+ * call site's comment and docs/DECISIONS.md's "known gaps" entries for why
+ * that specific capability has no real-API path yet.
+ */
+export function notSupportedByBackend(feature: string): never {
+  throw new ApiError(
+    `${feature} isn't implemented against the real backend yet — see docs/DECISIONS.md's known-gaps entries.`,
+    501,
+  );
+}
+
+/**
  * The real HTTP path. Not exercised in Phase 1 (no live apps/api yet — see
  * task brief), but written for real so the swap-over is "delete the mock
  * branch," not "write the real one from scratch."
