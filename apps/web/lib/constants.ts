@@ -8,14 +8,6 @@
  */
 export const DISCOUNT_MANAGER_PIN_THRESHOLD_PERCENT = 15;
 
-/**
- * DEMO ONLY — a stand-in manager PIN used to gate the
- * discount-above-threshold and credit-limit-override flows client-side
- * until real role/permission-scoped PIN verification exists against
- * apps/api. Must be deleted, not extended, once that lands.
- */
-export const DEMO_MANAGER_PIN = "9999";
-
 export const VARIANCE_NOTIFY_THRESHOLD_MINOR = 10_000 * 100; // RWF 10,000
 
 /**
@@ -40,7 +32,7 @@ export const WRITE_OFF_TYPED_CONFIRMATION_THRESHOLD_MINOR = 500_000 * 100; // RW
 
 /**
  * D.6.4 — back-dating a payment's date away from "today" is permission-
- * gated the same way the credit-limit override is (manager PIN), and always
- * requires a reason once unlocked.
+ * gated the same way the credit-limit override is, and always requires a
+ * reason once unlocked. The PIN check itself lives in
+ * lib/api/manager-override.ts, which owns the mock/real branch.
  */
-export const BACKDATE_MANAGER_PIN = DEMO_MANAGER_PIN;

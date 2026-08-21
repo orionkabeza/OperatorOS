@@ -2,6 +2,7 @@ import type { MinorUnits } from "@operatoros/shared";
 import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
+import { LOCATION_ID, LOCATION_ID_2, LOCATION_NAME, LOCATION_NAME_2 } from "../mock/seed";
 import { schemas } from "./generated/client";
 import { listProducts } from "./products";
 import type { z } from "zod";
@@ -254,6 +255,33 @@ export async function receiveTransfer(transferId: string, received: { productId:
     idempotencyKey: newIdempotencyKey(),
   });
   return mapTransferOut(schemas.TransferOut.parse(raw));
+}
+
+/**
+ * The locations a transfer can move stock between.
+ *
+ * `TransfersTab` used to import `LOCATION_ID`/`LOCATION_NAME` straight from
+ * `lib/mock/seed.ts` and send those ids to the real API — the same mistake
+ * that made `POST /day/open` fail on a foreign key, and it would also have
+ * printed the demo branch names ("Nyabugogo", "Kimironko") to a business
+ * that has neither. Mode-branching belongs here, not in a component.
+ *
+ * There is no endpoint that lists a business's locations with their names:
+ * `GET /api/v1/stock/locations` returns per-product stock rows (empty for a
+ * business with no products), and `GET /api/v1/users/me` gives location ids
+ * with no names. So this is honestly unsupported against a real backend
+ * rather than guessed at.
+ */
+export async function listTransferLocations(): Promise<{ id: string; name: string }[]> {
+  if (USE_MOCK_API) {
+    return mockDelay([
+      { id: LOCATION_ID, name: LOCATION_NAME },
+      { id: LOCATION_ID_2, name: LOCATION_NAME_2 },
+    ]);
+  }
+  return notSupportedByBackend(
+    "Choosing which locations a transfer moves stock between (no endpoint lists a business's locations by name)",
+  );
 }
 
 /** No `GET /api/v1/stock/transfers` list endpoint exists at all — same gap as `listStocktakes`, only create and get-by-id exist. */

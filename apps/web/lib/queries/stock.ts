@@ -4,6 +4,7 @@ import {
   countStocktakeLine,
   createTransfer,
   listStockMovements,
+  listTransferLocations,
   listStocktakes,
   listTransfers,
   moveStocktakeToReview,
@@ -70,7 +71,14 @@ export function usePostStocktake() {
 }
 
 export function useTransfers() {
-  return useQuery({ queryKey: ["transfers"], queryFn: listTransfers });
+  return useQuery({ queryKey: ["transfers"], queryFn: listTransfers, retry: false });
+}
+
+/** Errors (rather than returning []) against a real backend -- see
+ *  listTransferLocations. `retry: false` so the unsupported case settles
+ *  immediately instead of retrying a call that cannot start succeeding. */
+export function useTransferLocations() {
+  return useQuery({ queryKey: ["transfer-locations"], queryFn: listTransferLocations, retry: false });
 }
 
 export function useCreateTransfer() {

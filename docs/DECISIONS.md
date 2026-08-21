@@ -816,3 +816,35 @@ INFO: "POST /api/v1/day/open HTTP/1.1" 500 Internal Server Error
 **Still open, and the reason this was invisible:** the failed mutation surfaced nothing to the user. `useOpenDay`'s error state isn't rendered, so a 500 and a successful no-op are indistinguishable at the UI. That is the deeper defect — this bug was findable only by opening devtools — and it is worth fixing before the next one hides the same way. Not addressed here.
 
 **How to apply:** an identifier that is *valid in mock data* is not thereby valid against a real backend, no matter how conceptually equivalent the two seem — mock ids are a different namespace, and a constant that crosses that boundary will always be wrong on one side of it. When a UI action does nothing at all, check the network tab before the component: an unrendered mutation error looks exactly like a dead button.
+
+---
+
+## 2026-08-22 — A guard on the mock/real boundary, because three incidents in a row came through it
+
+**The pattern, not the bugs:** three production failures in quick succession were the same defect wearing different clothes.
+
+1. `DEFAULT_LOCATION_ID` ("loc-nyabugogo") went out as a real `location_id`; `POST /day/open` died on a foreign key and opening the shop was impossible.
+2. `buildImportPreview` compared real uploads to the mock seed catalog, flagged rows as duplicates of products the business never had, and — because `commitImport` forwards `is_duplicate` and the API skips those rows — silently dropped them from a real import.
+3. `commitImport` itself once wrote to the mock store regardless of mode.
+
+In every case `USE_MOCK_API` correctly guarded the *network* branch. Nothing guarded the *data*. A function can take the real code path and still compute over fake values, and that is invisible to types, to tests that run in mock mode, and to any smoke check that only asks whether a request 200s.
+
+**Decision:** enforce the boundary statically, in `apps/web/scripts/check-no-mock-in-real-paths.mjs`, wired into `npm run lint` so CI fails on it. Three rules:
+- **A** — only `lib/api/**` and `lib/mock/**` may import from `lib/mock/`. UI code reaching into mock data is never correct in production.
+- **B** — inside `lib/api/**`, an *exported* function touching mock state (`store.`, `getDb(`, or any mock-only identifier) must mention `USE_MOCK_API`.
+- **C** — mock-only identifiers (`DEFAULT_LOCATION_ID`, `DEMO_MANAGER_PIN`, the seed's `LOCATION_*`, `CURRENT_USER_*`) must not appear anywhere outside those two layers.
+
+Verified the guard by reintroducing two of the historical bugs and confirming it fails on each, rather than trusting a green run on already-fixed code.
+
+**What the sweep then found and fixed, beyond the known three:**
+- `components/stock/TransfersTab.tsx` imported `LOCATION_ID`/`LOCATION_ID_2` from the mock seed and sent them to the real transfer endpoint — the identical foreign-key failure as day-open, still latent. It also *rendered* the demo branch names ("Nyabugogo → Kimironko") as button text to businesses that have neither. Locations now come from `listTransferLocations()` in the API layer, which is honestly `notSupportedByBackend` against a real backend: no endpoint lists a business's locations by name (`GET /stock/locations` returns per-product stock rows, empty for a new business; `GET /users/me` gives ids without names). The tab now says so instead of offering a transfer it cannot construct.
+- `DEMO_MANAGER_PIN` ("9999") was compared directly in three components to approve over-threshold discounts, credit-limit overrides and back-dated payments. The backend enforces this properly — `_verify_manager_override`, rate-limited — but requires a manager *user id* alongside the PIN, and `sales.ts` always sends `manager_override_user_id: null`, so the check returns False and the sale comes back 422. The UI said "approved" and the server then refused, with nothing connecting the two for the user. The constant moved into `lib/mock/seed.ts` and the branch into `lib/api/manager-override.ts`, which approves in mock mode and in real mode returns a message naming the actual limitation.
+
+**Alternatives rejected:**
+- *Delete the mock layer.* It is what makes the e2e suite runnable with no backend and the design work possible offline; the problem was never its existence, only its reachability.
+- *Rely on review and discipline.* Three incidents in three days, each caught by a person clicking the live site rather than by anyone reading the diff, is the evidence against that.
+- *Flag every function touching mock state, not just exported ones.* Produced false positives on genuinely mock-only private helpers (`computeOverview`, `applyFilters`). A check that cries wolf gets switched off, which protects nothing — the exported-function rule covers the boundary that actually leaks. The limitation is written into the script's header rather than left for someone to rediscover.
+
+**Known limit, stated plainly:** a module-private helper called from an exported function's *real* branch would still slip through, and no static rule catches a real endpoint returning data the UI then misinterprets. This narrows a specific, repeatedly-demonstrated failure mode; it does not make mock contamination impossible.
+
+**How to apply:** when adding anything to `lib/api/*.ts`, the mock branch may read mock data and the real branch may not — the guard enforces it, but the reasoning matters more than the rule: an identifier that is valid in the mock layer is in a *different namespace* from the real backend's, however equivalent the two look. If a value's only definition lives in `lib/mock/`, it cannot legally reach a request.

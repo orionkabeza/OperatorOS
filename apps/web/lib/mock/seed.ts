@@ -461,3 +461,14 @@ export const CUSTOMERS: Customer[] = [
     trade: "Rukundo Hardware & Paint",
   },
 ];
+
+/**
+ * DEMO ONLY — the stand-in manager PIN the mock layer accepts for
+ * discount / credit-limit / back-dating approval. It lives here, with the
+ * rest of the fake data, rather than in lib/constants.ts: components used
+ * to import it directly and compare against it, which silently produced a
+ * local "approved" that the real backend then rejected. The only code that
+ * may read this is lib/api/manager-override.ts, which owns the mock/real
+ * branch. Delete it, don't extend it, once real manager approval lands.
+ */
+export const DEMO_MANAGER_PIN = "9999";

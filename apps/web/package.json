@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint && node scripts/check-no-arbitrary-tailwind.mjs && node scripts/check-api-client-fresh.mjs",
+    "lint": "next lint && node scripts/check-no-arbitrary-tailwind.mjs && node scripts/check-api-client-fresh.mjs && node scripts/check-no-mock-in-real-paths.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "pretest:e2e": "npm run build",

@@ -4,8 +4,7 @@ import { useState } from "react";
 import { Button } from "../design/Button";
 import { EmptyState } from "../design/EmptyState";
 import { useProducts } from "@/lib/queries/products";
-import { useCreateTransfer, useReceiveTransfer, useTransfers } from "@/lib/queries/stock";
-import { LOCATION_ID, LOCATION_ID_2, LOCATION_NAME, LOCATION_NAME_2 } from "@/lib/mock/seed";
+import { useCreateTransfer, useReceiveTransfer, useTransferLocations, useTransfers } from "@/lib/queries/stock";
 
 const STATUS_LABEL: Record<string, string> = { in_transit: "In transit", received: "Received", discrepancy: "Discrepancy" };
 
@@ -13,12 +12,23 @@ const STATUS_LABEL: Record<string, string> = { in_transit: "In transit", receive
 export function TransfersTab() {
   const { data: transfers } = useTransfers();
   const { data: products } = useProducts();
+  // Locations come from the API layer rather than lib/mock/seed -- sending
+  // demo location ids to a real backend is what broke day-open, and the
+  // demo branch names would have been shown to a business that has neither.
+  const { data: locations, isError: locationsUnavailable } = useTransferLocations();
+  const [from, to] = locations ?? [];
   const createTransfer = useCreateTransfer();
   const receiveTransfer = useReceiveTransfer();
 
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("");
   const [receivedQty, setReceivedQty] = useState<Record<string, string>>({});
+
+  if (locationsUnavailable || (locations && locations.length < 2)) {
+    return (
+      <EmptyState statement="Transfers move stock between two of your shops. This build can't list your locations yet, so there's nothing to transfer between — ask an owner to move stock with a stock adjustment for now." />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-16">
@@ -46,15 +56,20 @@ export function TransfersTab() {
         <Button
           variant="primary"
           type="button"
-          disabled={!productId || !qty}
-          onClick={() =>
-            void createTransfer.mutateAsync({ fromLocationId: LOCATION_ID, toLocationId: LOCATION_ID_2, lines: [{ productId, qty }] }).then(() => {
+          disabled={!productId || !qty || !from || !to}
+          onClick={() => {
+            // Still loading, or fewer than two locations -- the button is
+            // disabled in both cases, but narrow explicitly rather than
+            // asserting: sending an undefined location id is precisely the
+            // class of bug this whole boundary exists to prevent.
+            if (!from || !to) return;
+            void createTransfer.mutateAsync({ fromLocationId: from.id, toLocationId: to.id, lines: [{ productId, qty }] }).then(() => {
               setProductId("");
               setQty("");
-            })
-          }
+            });
+          }}
         >
-          Send {LOCATION_NAME} → {LOCATION_NAME_2}
+          Send {from?.name} → {to?.name}
         </Button>
       </div>
 

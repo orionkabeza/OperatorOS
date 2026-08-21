@@ -6,7 +6,7 @@ import { Button } from "@/components/design/Button";
 import { Drawer } from "@/components/design/Drawer";
 import { Input } from "@/components/design/Input";
 import { Money } from "@/components/design/Money";
-import { BACKDATE_MANAGER_PIN } from "@/lib/constants";
+import { verifyManagerOverridePin } from "@/lib/api/manager-override";
 import { autoAllocate, validateManualAllocation, type AllocatableInvoice } from "@/lib/debt-math";
 import type { DebtAccountSummary, PaymentMethod } from "@/lib/api/types";
 import { useMoneyLocations } from "@/lib/queries/cashbox";
@@ -365,8 +365,9 @@ export function TakePaymentDrawer({ account, onClose }: { account: DebtAccountSu
                     <Button
                       variant="secondary"
                       onClick={() => {
-                        if (backdatePin === BACKDATE_MANAGER_PIN) setBackdateUnlocked(true);
-                        else pushToast({ message: "Wrong PIN." });
+                        const outcome = verifyManagerOverridePin(backdatePin);
+                        if (outcome.approved) setBackdateUnlocked(true);
+                        else pushToast({ message: outcome.message });
                       }}
                     >
                       Unlock back-dating

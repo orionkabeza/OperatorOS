@@ -6,7 +6,7 @@ import { Button } from "../design/Button";
 import { Drawer } from "../design/Drawer";
 import { Money } from "../design/Money";
 import { changeDueMinor, paidSoFarMinor, remainingMinor } from "@/lib/basket-math";
-import { DEMO_MANAGER_PIN } from "@/lib/constants";
+import { verifyManagerOverridePin } from "@/lib/api/manager-override";
 import type { Customer, PaymentLineInput, PaymentMethod, ReceiptChannel } from "@/lib/api/types";
 import { checkCreditLimit } from "@/lib/api/sales";
 import { useQuery } from "@tanstack/react-query";
@@ -43,7 +43,7 @@ function CreditLine({
   });
   const [pin, setPin] = useState("");
   const [reason, setReason] = useState("");
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
   const blocked = check ? !check.allowed && !payment.managerPinOverride : false;
 
   if (!customer) {
@@ -93,7 +93,7 @@ function CreditLine({
           />
           {pinError ? (
             <p role="alert" className="text-meta text-out">
-              Wrong PIN.
+              {pinError}
             </p>
           ) : null}
           <Button
@@ -101,11 +101,12 @@ function CreditLine({
             type="button"
             disabled={!reason.trim()}
             onClick={() => {
-              if (pin === DEMO_MANAGER_PIN) {
+              const outcome = verifyManagerOverridePin(pin);
+              if (outcome.approved) {
                 onUpdate({ managerPinOverride: pin, overrideReason: reason });
-                setPinError(false);
+                setPinError(null);
               } else {
-                setPinError(true);
+                setPinError(outcome.message);
               }
             }}
           >

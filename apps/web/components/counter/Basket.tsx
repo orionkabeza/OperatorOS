@@ -6,7 +6,8 @@ import { Money } from "../design/Money";
 import { BasketRow } from "./BasketRow";
 import { CustomerPicker } from "./CustomerPicker";
 import { discountFromPercent, grandTotalMinor, subtotalMinor, vatMinor } from "@/lib/basket-math";
-import { BUSINESS_VAT_REGISTERED, DEMO_MANAGER_PIN, DISCOUNT_MANAGER_PIN_THRESHOLD_PERCENT, VAT_RATE_PERCENT } from "@/lib/constants";
+import { BUSINESS_VAT_REGISTERED, DISCOUNT_MANAGER_PIN_THRESHOLD_PERCENT, VAT_RATE_PERCENT } from "@/lib/constants";
+import { verifyManagerOverridePin } from "@/lib/api/manager-override";
 import { useBasketStore } from "@/lib/stores/basket-store";
 import type { Product } from "@/lib/api/types";
 import { minorUnits } from "@operatoros/shared";
@@ -29,7 +30,7 @@ export function Basket({
   const { lines, customerId, discount, setQty, setUnitPrice, setLineDiscount, setLineNote, setLineUnit, removeLine, setCustomer, setDiscount, clear } =
     useBasketStore();
   const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const productMap = new Map(products.map((p) => [p.id, p]));
   const subtotal = subtotalMinor(lines);
@@ -53,12 +54,13 @@ export function Basket({
         : undefined;
 
   function verifyPin() {
-    if (pinInput === DEMO_MANAGER_PIN) {
+    const outcome = verifyManagerOverridePin(pinInput);
+    if (outcome.approved) {
       setDiscount({ managerPinVerified: true });
-      setPinError(false);
+      setPinError(null);
       setPinInput("");
     } else {
-      setPinError(true);
+      setPinError(outcome.message);
     }
   }
 
@@ -143,7 +145,7 @@ export function Basket({
         ) : null}
         {pinError ? (
           <p role="alert" className="text-meta text-out">
-            Wrong PIN.
+            {pinError}
           </p>
         ) : null}
 
