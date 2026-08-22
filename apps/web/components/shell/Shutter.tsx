@@ -50,6 +50,8 @@ export function Shutter() {
     setBusinessSlug,
     rememberedSlug,
     hydrateBusinessSlug,
+    sessionChecked,
+    restoreSession,
   } = useAuthStore();
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
@@ -62,6 +64,12 @@ export function Shutter() {
   useEffect(() => {
     hydrateBusinessSlug();
   }, [hydrateBusinessSlug]);
+
+  // A refresh used to drop a live session: `signedIn` is in-memory state, so
+  // the app forgot, even though the httpOnly cookies were still good.
+  useEffect(() => {
+    void restoreSession();
+  }, [restoreSession]);
 
   // Driven by the *confirmed* slug, not the field's live value: keying this
   // off `businessSlug` meant the backdrop re-rendered on every keystroke and
@@ -98,7 +106,11 @@ export function Shutter() {
       </p>
 
       <div className="relative w-shutter max-w-full mx-16 rounded border-t-4 border-tape bg-paper p-32 shadow-shelf">
-        {signedIn ? null : (
+        {/* Holding rather than flashing a login form at someone whose session
+            is about to be restored -- see auth-store::restoreSession. */}
+        {!sessionChecked ? (
+          <p className="text-body text-ink-soft">Opening up…</p>
+        ) : signedIn ? null : (
           <>
         {submitting ? (
           <div className="absolute inset-x-0 top-0 h-3 overflow-hidden rounded-t bg-rule">

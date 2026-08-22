@@ -23,6 +23,9 @@ describe("Shutter — business slug field", () => {
       rememberedSlug: "",
       signedIn: false,
       shutterState: "idle",
+      // These cover the sign-in form, which only renders once the session
+      // check has come back -- see the "restoring" test below for that gate.
+      sessionChecked: true,
     });
   });
 
@@ -71,5 +74,17 @@ describe("Shutter — business slug field", () => {
     window.localStorage.setItem(BUSINESS_SLUG_KEY, "kigali-hardware");
     render(<Shutter />);
     expect(screen.getByText("Kigali Hardware")).toBeInTheDocument();
+  });
+
+  // A refresh used to drop a live session outright. Now the session is
+  // re-checked against the server first -- and asking a signed-in user for
+  // their PIN while that is in flight, only to yank the form away, is worse
+  // than making them wait a beat.
+  it("holds the sign-in form until the session check comes back", () => {
+    useAuthStore.setState({ sessionChecked: false });
+    render(<Shutter />);
+
+    expect(screen.getByText("Opening up…")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Business")).not.toBeInTheDocument();
   });
 });

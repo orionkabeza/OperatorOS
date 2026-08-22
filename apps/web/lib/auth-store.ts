@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { resetDefaultLocationId, USE_MOCK_API } from "@/lib/api/config";
+import { API_BASE_URL, resetDefaultLocationId, USE_MOCK_API } from "@/lib/api/config";
 
 /**
  * Real auth, replacing the deleted lib/demo-auth-store.ts (D.1, plan
@@ -67,6 +67,24 @@ interface AuthState {
    * passes start from "" and agree.
    */
   hydrateBusinessSlug: () => void;
+  /**
+   * False until we've asked the server whether the httpOnly session cookies
+   * from a previous page load are still valid. The Shutter waits for it
+   * rather than flashing a login form at someone who is already signed in.
+   */
+  sessionChecked: boolean;
+  /**
+   * `signedIn` lives in memory only, so every refresh dropped a working
+   * session on the floor and sent the shopkeeper back to the Shutter --
+   * mid-day, with valid cookies still in the jar. The tokens are httpOnly
+   * and unreadable from JS, so the only way to know is to ask: any
+   * authenticated endpoint that answers 200 proves the session is live.
+   *
+   * Fails closed. A 401, a network error, or mock mode all leave
+   * `signedIn` false, which is exactly today's behaviour -- this can only
+   * ever restore a session the server itself vouches for.
+   */
+  restoreSession: () => Promise<void>;
   signIn: (phone: string, pin: string, deviceId: string, remember: boolean) => Promise<void>;
   submitTwoFactor: (code: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -89,6 +107,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Prefill only -- never overwrite something the user has already typed
     // (the effect can run after they've started filling the form in).
     set((s) => ({ rememberedSlug: remembered, businessSlug: s.businessSlug || remembered }));
+  },
+
+  // Mock mode has no cookies to restore, so there is nothing to wait for.
+  sessionChecked: USE_MOCK_API,
+  restoreSession: async () => {
+    if (USE_MOCK_API || get().sessionChecked) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/users/me`, { credentials: "include" });
+      if (res.ok) set({ signedIn: true, shutterState: "idle", rememberedSlug: readLastBusinessSlug() });
+    } catch {
+      // Offline or unreachable -- the Shutter is the honest answer.
+    }
+    set({ sessionChecked: true });
   },
 
   signIn: async (phone, pin, deviceId, remember) => {
