@@ -609,7 +609,7 @@ Proved with `tests/test_debt_take_payment.py::test_concurrent_take_payments_do_n
 13. `day.ts::reopenDay` — no `/reopen` route.
 14. `till.ts::getOpenTillSession` — no GET for a single till session at all (only `POST /open`, `POST /{id}/close`); this session's own last `openTillSession()` result is cached in module state as the only available signal, and conservatively reports "no open session" after a fresh page load.
 15. `receipts.ts::getReceiptPdfUrl` — no PDF-rendering endpoint; `GET /{receipt_number}` returns `rendered_text` (HTML), never a binary PDF or a URL to one. A pre-existing, already-disclosed Phase 1 gap (`api/routers/receipts.py`'s own docstring), reaffirmed here, not new.
-16. `onboarding.ts` (both functions) — no `/api/v1/onboarding` (or any onboarding-shaped) route exists anywhere. Spec D.2 wants server-side, cross-device persistence; since blocking the app's entire first-run flow behind a real-API build that can never complete onboarding would be strictly worse, both branches fall back to the same `localStorage` mechanism, clearly commented as a stand-in.
+16. `onboarding.ts` (both functions) — no `/api/v1/onboarding` (or any onboarding-shaped) route exists anywhere. Spec D.2 wants server-side, cross-device persistence; since blocking the app's entire first-run flow behind a real-API build that can never complete onboarding would be strictly worse, both branches fall back to the same `localStorage` mechanism, clearly commented as a stand-in. **What this actually costs, spelled out** (2026-08-22, after it was mistaken for working): the wizard's trading name renames nothing, its staff list creates no accounts and sends no invites, and its opening debtors and payables never reach the Debt Book or supplier balances — `state.staff`, `state.openingBalances.debtors` and `.payables` are read by no `lib/api` function at all. Only step 3's products are real. The steps now say so on screen (`KeptOnThisDevice`); closing the gap needs a business-rename endpoint, staff creation with PIN-setup delivery, opening-balance posting, and — for payables — the Phase 3 supplier model.
 17. `expenses.ts::setApprovalThreshold` — the threshold is a hardcoded Python constant (`EXPENSE_APPROVAL_THRESHOLD_MINOR`), not a stored setting; `getApprovalThreshold` stays read-only against the known real value.
 
 **Real backend behavior the frontend had wrongly assumed didn't exist (the opposite kind of finding — not a gap, a correction):** customer "hold" IS real, checked server-side — `CustomerAccountOut`/`Customer.status` is a free-form string column and `debt.py`/`reminders_engine.py` genuinely check for the literal value `"on_hold"` (excludes the customer from the chase queue and reminder digest). `customers.ts::updateCustomerHold` now writes it via `PATCH /customers/{id}` with `{ status: "on_hold" | "active" }` — no dedicated `/hold` endpoint was ever needed.
@@ -901,3 +901,48 @@ Also gives `commitImport` an explicit failure for the no-units case rather than 
 - *Grant the app role `DELETE` on `businesses` and expose an endpoint.* Deleting a tenant and everything it owns should not be reachable from the running application at all.
 
 **How to apply:** `.venv/bin/python scripts/delete_business.py --keep <slug>` (or list slugs to remove) with the migrate credential in the environment. Anything that cascades into a projection table hits this same wall — reach for this script rather than re-deriving the trigger dance.
+
+---
+
+## 2026-08-22 — The setup wizard could lock a tenant out of their own shop
+
+**Found by:** a report from the live site. "Fitting out the shop", step 6, clicking *Open the shop* raised the toast **"The shop is already open at this location."** and went no further. No forward, no back, no dismissal.
+
+**What was wrong:** the wizard's `completed` flag lives in this browser — there is no onboarding endpoint to put it behind (see `lib/api/onboarding.ts`) — but the thing it gates on, the shop being open, lives on the server. Nothing reconciled the two, and the failure mode when they disagreed was total:
+
+1. A browser that had lost its flag (cleared storage, another device, another browser) put a fully fitted-out shop back at step 1.
+2. The wizard's only exit is *Open the shop*, and `POST /api/v1/day/open` answers `409` for a day that is already open — correctly; a day must not be opened twice.
+3. So the exit was closed. *Not yet* returned to the same screen.
+
+Two things kept it from self-correcting. `Onboarding` carried a second copy of the decision — an effect keyed only on `[day?.status]` — so when the day was *already* open on arrival the status never changed, the effect never fired, and the wizard never noticed it was finished. And completion was chained off `save.mutateAsync(...).then(onFinish)`, so a failed write to browser storage also stranded the tenant in a wizard they had actually completed.
+
+The flag was one flat key shared by every business signed in on the device, which broke the same seam in the other direction: a brand-new business inherited the previous one's finished wizard and skipped setup entirely — no products, no staff, no opening balances, straight onto an empty shop floor.
+
+**Decision:** **server truth decides, in exactly one place.** `useOnboardingGate()` (`lib/queries/onboarding.ts`) owns "is this shop fitted out?", and answers `completed || day.status === "open"`. Opening the day is the wizard's last action, so an open day is proof the wizard finished no matter what the browser remembers. The flag is written back rather than merely inferred, so it is still true tonight once the day is closed again. `Onboarding`'s rival copy of the decision is deleted — the component no longer reads day status at all.
+
+Three supporting changes:
+- `openDay()` reconciles a `409` by adopting the session the server already has. A second tab, a second device, or a double-submit reaches the state the caller wanted; reporting a failure the shopkeeper cannot act on is worse than useless when nothing in the app can clear an open day except closing it. Only reconciles when a day really is open — the endpoint's other `409` (an `Idempotency-Key` reused for a different body) still surfaces.
+- Onboarding state is keyed per business slug, with a one-time migration off the shared key.
+- `useDayStatus` is gated on `signedIn`, because the gate runs on `app/page.tsx` before the Shutter is cleared and an unauthenticated day fetch is a guaranteed 401 — which, now that failures surface globally, would land as an error toast on the login screen.
+
+**Alternatives rejected:**
+- *Give the wizard a "skip setup" escape hatch.* Papers over the disagreement and leaves the app's two halves believing different things. It also puts the burden on the shopkeeper to know that the wizard is wrong.
+- *Fix the effect's dependency array and stop there.* Repairs this instance and leaves the structure that produced it: two components independently deciding the same thing, which is how the stale-dependency bug survived review in the first place.
+- *Treat 409 as success unconditionally.* Would swallow the idempotency-key conflict, which is a real client bug worth seeing.
+- *Persist onboarding server-side.* The right answer, and still an open gap — it needs an endpoint that does not exist. The gate makes the browser-local flag safe to be wrong, which is what unblocks the tenant today.
+
+**How to apply:** when browser state gates on server state, name which one wins and reconcile in one place. Two components deriving the same conclusion from the same data is not redundancy — it is a second copy that can rot, and this one rotted into a lockout. And any endpoint that refuses an action *because it is already done* needs the caller to treat that as the goal reached, not as an error: check every `409` for whether the user's intent is already satisfied.
+
+**Decision 2 — the wizard stops claiming it saved things it didn't.** Checking the reported business against the database turned up something the lockout was hiding. There is exactly one tenant, `demo-c6ed09` / "Kigali Hardware Demo", with a day open since 10:22 UTC — no business named "KAGARAMA HARDWARE" exists at all, even though the summary card displayed it. The trading name is wizard state; it renames nothing.
+
+The same is true of steps 4 and 5. `state.staff`, `state.openingBalances.debtors` and `.payables` are read by no `lib/api` function anywhere — they reach `localStorage` and stop. That the mechanism is a stand-in is disclosed (known gaps #16); the screens asserting otherwise was not. Step 5 said *"without it, the Debt Book starts empty on day one"* and then let the Debt Book start empty, and the summary reported "2 staff invited" and "1 opening debtors recorded" for an invite never sent and a debt never posted.
+
+Only the product count was ever true — the CSV/XLSX importer writes real products.
+
+This is a money-correctness problem, not a copy nit: a shopkeeper who believes their debtors are on the books stops chasing them from their old record, and the debt quietly ages out. Every step whose input stops in the browser now says so next to the fields (`KeptOnThisDevice`), the summary distinguishes "noted" from saved, and the false promise of a WhatsApp invite is gone.
+
+**Alternatives rejected:**
+- *Wire the steps up instead.* The right fix and much larger than a copy change: renaming a business, creating staff accounts with PIN-setup delivery, and posting opening debtor balances as real ledger entries are three separate features, and supplier payables have no backend at all before Phase 3. Worth scheduling; not worth leaving the app lying in the meantime.
+- *Remove the steps.* The information is genuinely useful to collect, and a shop that has written its debtors down once will migrate faster when the books can take them.
+
+**How to apply:** a form that discards its input is worse than no form, because it buys false confidence — and the cost lands on whoever trusted it. If a field has nowhere to go yet, say so beside the field, in the same screen, before the user commits work to it.
