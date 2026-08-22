@@ -27,6 +27,7 @@ from operatoros_api.seed import (  # noqa: E402
     create_location,
     create_user,
     seed_default_roles_and_permissions,
+    seed_default_units,
 )
 
 
@@ -42,6 +43,7 @@ async def main() -> None:
 
     async with tenant_scoped_session(business_id) as session:
         location = await create_location(session, business_id=business_id, name="Main Shop")
+        await seed_default_units(session, business_id=business_id)
         roles = await seed_default_roles_and_permissions(session, business_id=business_id)
         owner = await create_user(
             session,

@@ -47,6 +47,7 @@ from operatoros_api.seed import (
     create_location,
     create_user,
     seed_default_roles_and_permissions,
+    seed_default_units,
 )
 
 APPS_API_DIR = Path(__file__).resolve().parents[1]
@@ -181,6 +182,7 @@ async def make_tenant(label: str) -> SeededTenant:
 
     async with db_module.tenant_scoped_session(business_id) as session:
         location = await create_location(session, business_id=business_id, name="Main")
+        units = await seed_default_units(session, business_id=business_id)
         roles = await seed_default_roles_and_permissions(session, business_id=business_id)
         owner = await create_user(
             session,
@@ -193,9 +195,12 @@ async def make_tenant(label: str) -> SeededTenant:
         )
 
         category = Category(business_id=business_id, name="General")
-        unit = Unit(business_id=business_id, name="piece", symbol="pc")
-        session.add_all([category, unit])
+        session.add(category)
         await session.flush()
+        # Reuse the shared default units rather than hand-rolling one, so a
+        # fixture tenant matches what a real new business actually gets --
+        # the stated purpose of operatoros_api.seed.
+        unit = next(u for u in units if u.name == "piece")
         product = Product(
             business_id=business_id,
             category_id=category.id,

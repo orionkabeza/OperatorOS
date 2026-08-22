@@ -2,7 +2,7 @@ import { minorUnits } from "@operatoros/shared";
 import { addQty, qtyToNumber } from "../decimal";
 import { CATEGORIES, UNITS } from "../mock/seed";
 import { appendStockMovement, getDb, mockDelay } from "../mock/store";
-import { apiRequest, getDefaultLocationId, newIdempotencyKey, USE_MOCK_API } from "./config";
+import { ApiError, apiRequest, getDefaultLocationId, newIdempotencyKey, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
 import type { z } from "zod";
 import type { Category, CreateProductInput, ImportPreview, ImportRow, Product, ProductFilters, Unit } from "./types";
@@ -367,7 +367,18 @@ export async function commitImport(rows: ImportRow[]): Promise<{ created: number
     return mockDelay({ created: validRows.length });
   }
   const { unitNameById } = await getCategoryUnitLookups();
-  const defaultUnitId = [...unitNameById.keys()][0] ?? "";
+  const defaultUnitId = [...unitNameById.keys()][0];
+  if (!defaultUnitId) {
+    // Sending "" here earns a bare "Unknown default_unit_id." from the API,
+    // which tells a shopkeeper nothing. A business with no units genuinely
+    // cannot hold stock (every product needs a base_unit_id) -- new
+    // businesses are seeded with defaults now, so this is a real anomaly
+    // worth naming rather than a state to paper over.
+    throw new ApiError(
+      "This business has no units of measure set up, so products can't be created. Add one (piece, bag, kg) and try again.",
+      409,
+    );
+  }
   const raw = await apiRequest<unknown>("POST", "/api/v1/products/import/commit", {
     body: {
       default_unit_id: defaultUnitId,

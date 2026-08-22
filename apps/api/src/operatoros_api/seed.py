@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from operatoros_api.capabilities import CAPABILITIES, DEFAULT_ROLE_CAPABILITIES, ROLES_REQUIRING_2FA
+from operatoros_api.models.catalog import Unit
 from operatoros_api.models.tenancy import (
     Business,
     Location,
@@ -38,6 +39,30 @@ async def create_location(
     session.add(location)
     await session.flush()
     return location
+
+
+# Every product needs a `base_unit_id`, so a business with no units cannot
+# hold stock at all: `POST /products/import/commit` rejects the empty
+# `default_unit_id` the frontend is forced to send with 422 "Unknown
+# default_unit_id", which is exactly why a real CSV upload landed 0 of 40
+# products. These are the units the app's own vocabulary already assumes
+# (lib/mock/seed.ts's UNITS) -- a shop can rename or add to them, but it
+# must not start with none.
+DEFAULT_UNITS: tuple[tuple[str, str], ...] = (
+    ("piece", "pc"),
+    ("bag", "bag"),
+    ("kg", "kg"),
+    ("litre", "L"),
+    ("box", "box"),
+    ("carton", "ctn"),
+)
+
+
+async def seed_default_units(session: AsyncSession, *, business_id: str) -> list[Unit]:
+    units = [Unit(business_id=business_id, name=name, symbol=symbol) for name, symbol in DEFAULT_UNITS]
+    session.add_all(units)
+    await session.flush()
+    return units
 
 
 async def seed_default_roles_and_permissions(

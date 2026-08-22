@@ -864,3 +864,23 @@ So apps/api grew `GET /api/v1/users/approvers?capability=...`: authenticated but
 **Decision 3 — a flaky test fixed rather than retried.** `test_pay_link_flipped_signature_byte_is_rejected` failed in a full run and passed in isolation. Not load or ordering: an HS256 signature is 256 bits carried in 43 base64url characters — 258 bits of capacity — so the final character's low 2 bits are padding that decoders ignore, and several distinct final characters decode to byte-identical signatures. Rewriting the last character to "A" therefore left the token genuinely valid roughly one run in sixteen, and the endpoint was right to accept it. Now flips the first character, where every bit is significant. Confirmed with five consecutive passes.
 
 **How to apply:** a mutation that can fail must have somewhere to say so before it ships — if the only way to observe a failure is the network tab, the feature is not finished. And when a client-side check "approves" something a server will independently decide, the check is decoration: either send what the server needs to make the real decision, or say plainly that the action isn't available.
+
+---
+
+## 2026-08-22 — A brand-new business had no units, so it could not hold stock at all
+
+**Found by:** running the reported CSV import against a freshly-created business. Forty valid rows, zero products created.
+
+**What was wrong:** `create_business` seeded roles, permissions, a location and an owner — but no units of measure. Every `Product` requires a `base_unit_id`, so a business with no units cannot hold stock at all. `commitImport` computes `default_unit_id` as `[...unitNameById.keys()][0] ?? ""`, `GET /products/units` returns `[]` on a new business, and the API correctly rejects the empty id with `422 Unknown default_unit_id.` — which, before global error surfacing landed, the user never saw. The import simply appeared to do nothing.
+
+This is the same shape as the location bug: an identifier the frontend was structurally unable to supply, failing on the server, invisibly.
+
+**Decision:** `seed_default_units` creates the six units the app's own vocabulary already assumes (`piece`, `bag`, `kg`, `litre`, `box`, `carton` — the same set as `lib/mock/seed.ts`'s `UNITS`) whenever a business is created. A shop can rename or add to them; it must not start with none. `tests/conftest.py` now uses that shared seeder instead of hand-rolling its own `piece` unit, which is the entire stated purpose of `operatoros_api.seed` — a fixture tenant should never be subtly different from what a real new business gets, and here it was: the fixtures had a unit, so no test could reproduce what every real signup hit.
+
+Also gives `commitImport` an explicit failure for the no-units case rather than sending `""` and relaying a bare "Unknown default_unit_id." to a shopkeeper.
+
+**Alternatives rejected:**
+- *Have the importer create a unit on the fly.* Silently inventing reference data during a bulk upload is how a catalogue ends up with three different spellings of "piece". Units are business-level setup, and the fix belongs where the business is created.
+- *Ask the user to pick a unit in the import screen.* Worth having eventually, but it does not fix the underlying state — a business with no units is broken for single-product creation too, not only for imports.
+
+**How to apply:** when adding anything a record structurally requires (a unit, a location, a category), check what a *brand-new* tenant actually has, not what the test fixtures have. The two drifted here precisely because the fixtures were built by hand, and that difference hid a bug every real signup would hit on day one.
