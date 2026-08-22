@@ -946,3 +946,37 @@ This is a money-correctness problem, not a copy nit: a shopkeeper who believes t
 - *Remove the steps.* The information is genuinely useful to collect, and a shop that has written its debtors down once will migrate faster when the books can take them.
 
 **How to apply:** a form that discards its input is worse than no form, because it buys false confidence — and the cost lands on whoever trusted it. If a field has nowhere to go yet, say so beside the field, in the same screen, before the user commits work to it.
+
+---
+
+## 2026-08-22 — Every real tenant saw the demo shop's name above their own till
+
+**Found by:** driving the live site with Playwright to confirm the setup-lockout fix. The assertion printed the page's own text, and the top bar read *"Kigali Hardware Supplies · Nyabugogo branch"* — while the database holds exactly one tenant, `demo-c6ed09` / **"Kigali Hardware Demo"**, whose only location is not named Nyabugogo.
+
+**What was wrong:** three literals in `TopNav`.
+
+```tsx
+export function TopNav({ businessName = "Kigali Hardware Supplies", ... })   // ShopFloor never passed one
+  …"Nyabugogo branch ▾"…                                                     // hard-coded
+  …>AM</button>                                                              // hard-coded initials
+```
+
+All three are the mock fixture's values, and they had been on every screen of every real session since the backend went live. For a multi-tenant business-ops product this is worse than cosmetic: the name above the till is how a shopkeeper confirms they are in *their* books, and it was someone else's.
+
+The reason it was written that way is that the frontend genuinely had nothing else to render. No route returned a business name, and `GET /stock/locations` returns per-product stock rows — empty for a business with no products — so a location id could not be turned into a branch name either. That second gap was already disclosed (`stock.ts::listTransferLocations`, known gaps); the first was not.
+
+**Decision:** `MeOut` carries `business_name` and a named `locations` list. Both come from rows the endpoint already had in scope, add no permission surface (you can only ever read your own session), and are covered by a cross-tenant test asserting two tenants get their own names. `lib/api/identity.ts` is the single place the UI reads any of it, initials derived from the real `display_name`. `listTransferLocations` stops throwing 501 and answers from the same field.
+
+**And a fourth guard rule, because the existing three could not have caught this.** Rules A–C all track *imports and identifiers*; `TopNav` defeated every one of them by simply typing the strings in. Rule D reads the fixture's name constants out of `lib/mock/seed.ts` at check time and fails on any file that hard-codes their values. Validated by reintroducing the bug — it fails — and it immediately found two more copies in `products.ts` that had been sitting there unnoticed.
+
+Rule D also exposed a bug in the guard itself: `globSync` yields `e2e\helpers.ts` on Windows, so `startsWith("e2e/")` was false and the e2e suite was in scope locally but not in CI. Paths are normalised before filtering now.
+
+**Alternatives rejected:**
+- *Title-case the business slug.* Already done for the Shutter backdrop, and it produces "Demo C6Ed09". Fine as a placeholder behind a login form; not fine as the name a shop reads all day.
+- *Leave the branch button hard-coded because it isn't wired up yet.* An inert control showing a branch the business does not own is a lie about their own data. It renders the real branch, or nothing.
+
+**How to apply:** when a component needs a value the API cannot supply, the answer is to extend the API, not to type in a plausible-looking constant. A default prop is the most dangerous form of this — it looks like configuration, so nobody reads it as a hard-coded value, and no caller has to opt in for it to ship.
+
+**Decision 2 — a refresh no longer throws away a live session.** `signedIn` lives in memory, and nothing ever restored it, so pressing F5 mid-day returned the shopkeeper to the Shutter for a full phone + PIN + TOTP round trip while perfectly valid httpOnly cookies sat in the jar. The tokens are unreadable from JS by design, so the only way to know is to ask: `restoreSession()` calls `GET /api/v1/users/me` once on mount and trusts the answer. It fails closed — a 401, a network error, or mock mode all leave `signedIn` false, exactly as before — so it can only ever restore a session the server itself vouches for. The Shutter holds on "Opening up…" while the check is in flight rather than flashing a login form at someone who is already signed in.
+
+**Decision 3 — CI now runs on `main`.** `ruff` and `black` had been failing on `main` for several commits with nothing to report it: `ci.yml` triggered only on pull requests and the old `rebuild/phase-0` branch, while `deploy.yml` fires on every push to `main`. Work has been reaching the live boxes with no gate having an opinion about it. Adding `main` to the push triggers makes the drift visible immediately. It does **not** yet block the deploy — both workflows still trigger independently on the same push, so a red CI run and a green deploy can coexist. Gating deploy on CI (`workflow_run`, or a `needs:` prerequisite) is the right follow-up and is deliberately not bundled into a hotfix: getting it wrong breaks the ability to ship at all.
