@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import fakeredis.aioredis
 import pytest
@@ -62,10 +62,32 @@ def postgres_urls() -> dict[str, str]:
     server = pgserver.get_server(tmp_dir, cleanup_mode="stop")
     admin_uri = server.get_uri()
 
+    # pgserver listens on TCP on Windows but on a Unix domain socket on
+    # Linux and macOS, where `get_uri()` has no hostname or port at all --
+    # the socket directory arrives as a `?host=` query parameter instead.
+    # Formatting that into "@{None}:{None}/" produced a URL SQLAlchemy
+    # rejected with `invalid literal for int() with base 10: 'None'`, which
+    # errored the setup of every single test. It never showed up locally
+    # (Windows takes the TCP path) and never showed up in CI either,
+    # because CI only ran on pull requests and the old integration branch
+    # while all work goes straight to main -- so this suite, including the
+    # cross-tenant isolation tests the spec makes a build-failing
+    # requirement, had never actually run on a runner. Both transports are
+    # handled here; libpq, psycopg and asyncpg all accept a socket
+    # directory passed as `host`.
     parts = urlsplit(admin_uri)
     host, port = parts.hostname, parts.port
+    if host:
+        authority, suffix = f"{host}:{port}", ""
+    else:
+        socket_dir = parse_qs(parts.query).get("host", [None])[0]
+        if not socket_dir:
+            raise RuntimeError(
+                f"cannot find a host or a socket directory in pgserver's URI: {admin_uri}"
+            )
+        authority, suffix = "", f"?host={socket_dir}"
 
-    bootstrap_url = f"postgresql+psycopg://postgres:@{host}:{port}/postgres"
+    bootstrap_url = f"postgresql+psycopg://postgres:@{authority}/postgres{suffix}"
     bootstrap_engine = create_engine(bootstrap_url, isolation_level="AUTOCOMMIT")
     with bootstrap_engine.connect() as conn:
         conn.execute(text("CREATE DATABASE operatoros_test"))
@@ -77,7 +99,7 @@ def postgres_urls() -> dict[str, str]:
         )
     bootstrap_engine.dispose()
 
-    admin_url = f"postgresql+psycopg://postgres:@{host}:{port}/operatoros_test"
+    admin_url = f"postgresql+psycopg://postgres:@{authority}/operatoros_test{suffix}"
     testdb_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     with testdb_engine.connect() as conn:
         conn.execute(text("GRANT CONNECT ON DATABASE operatoros_test TO operatoros_app"))
@@ -94,10 +116,14 @@ def postgres_urls() -> dict[str, str]:
 
     urls = {
         "admin": admin_url,
-        "app_async": f"postgresql+asyncpg://operatoros_app:{TEST_APP_PASSWORD}@{host}:{port}/operatoros_test",
-        "app_sync": f"postgresql+psycopg://operatoros_app:{TEST_APP_PASSWORD}@{host}:{port}/operatoros_test",
-        "host": host,
-        "port": str(port),
+        "app_async": (
+            f"postgresql+asyncpg://operatoros_app:{TEST_APP_PASSWORD}@{authority}"
+            f"/operatoros_test{suffix}"
+        ),
+        "app_sync": (
+            f"postgresql+psycopg://operatoros_app:{TEST_APP_PASSWORD}@{authority}"
+            f"/operatoros_test{suffix}"
+        ),
     }
     yield urls
     server.cleanup()
