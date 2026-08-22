@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -41,7 +42,12 @@ from operatoros_api.tasks.projection_audit import run_audit_async
 from tests.conftest import SeededTenant
 
 APPS_API_DIR = Path(__file__).resolve().parents[1]
-VENV_PYTHON = APPS_API_DIR / ".venv" / "Scripts" / "python.exe"
+# The interpreter running these tests, not a guessed venv layout. This was
+# hard-coded to `.venv/Scripts/python.exe`, which only exists on Windows --
+# the one test in the suite that failed once CI could finally run it on
+# Linux. `sys.executable` is right on every platform and does not assume a
+# virtualenv at all.
+VENV_PYTHON = Path(sys.executable)
 
 
 async def _inject_drift(tenant: SeededTenant, delta_minor: int) -> None:
