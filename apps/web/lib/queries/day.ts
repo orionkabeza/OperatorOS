@@ -1,12 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { closeDay, getDayCloseChecklist, getDaySummary, getDayStatus, openDay, reopenDay } from "../api/day";
+import { useAuthStore } from "../auth-store";
 import type { OpenDayInput, VarianceReason } from "../api/types";
 import type { MinorUnits } from "@operatoros/shared";
 
 export const DAY_STATUS_KEY = ["day-status"] as const;
 
 export function useDayStatus() {
-  return useQuery({ queryKey: DAY_STATUS_KEY, queryFn: getDayStatus });
+  // Gated on sign-in because app/page.tsx now reads day status to decide
+  // which screen a tenant belongs on, and that runs before the Shutter is
+  // cleared. Every real day call resolves a location from `GET /users/me`
+  // first, so firing it signed-out is a guaranteed 401 -- which, now that
+  // failures surface globally (lib/query-client.ts), would land as an error
+  // toast on the login screen itself.
+  const signedIn = useAuthStore((s) => s.signedIn);
+  return useQuery({ queryKey: DAY_STATUS_KEY, queryFn: getDayStatus, enabled: signedIn });
 }
 
 export function useOpenDay() {

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { Shutter } from "@/components/shell/Shutter";
 import { useAuthStore } from "@/lib/auth-store";
-import { useOnboardingState } from "@/lib/queries/onboarding";
+import { useOnboardingGate } from "@/lib/queries/onboarding";
 
 // Everything behind the Shutter (Onboarding's whole wizard including the
 // CSV/XLSX importer, and the full Shop Floor with all seven rooms) is
@@ -21,15 +21,20 @@ const ShopFloor = dynamic(
 
 export default function Home() {
   const signedIn = useAuthStore((s) => s.signedIn);
-  const { data: onboarding } = useOnboardingState();
+  // Setup-vs-shop-floor is decided against the server, not against whatever
+  // this browser remembers -- see useOnboardingGate for the lockout that
+  // trusting the browser alone produced.
+  const { decided, fittedOut } = useOnboardingGate();
 
   return (
     <>
       {signedIn ? (
-        onboarding && !onboarding.completed ? (
-          <Onboarding onFinish={() => undefined} />
-        ) : (
+        !decided ? (
+          <p className="p-32 text-body text-ink-soft">Loading…</p>
+        ) : fittedOut ? (
           <ShopFloor />
+        ) : (
+          <Onboarding />
         )
       ) : null}
       <Shutter />

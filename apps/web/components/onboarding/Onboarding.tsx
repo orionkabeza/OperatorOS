@@ -10,7 +10,6 @@ import { StepComplete } from "./StepComplete";
 import { StepCounter } from "./StepCounter";
 import { StepPeople } from "./StepPeople";
 import { StepStock } from "./StepStock";
-import { useDayStatus } from "@/lib/queries/day";
 import { useOnboardingState, useSaveOnboardingState } from "@/lib/queries/onboarding";
 import { EMPTY_ONBOARDING_STATE } from "@/lib/api/onboarding";
 import type { OnboardingState } from "@/lib/api/types";
@@ -21,11 +20,20 @@ import type { OnboardingState } from "@/lib/api/types";
  * lib/api/onboarding.ts) after every step change so it resumes if the
  * tenant navigates away mid-setup, per the spec's "resumes on any device"
  * requirement (mock: same-browser only, clearly marked there).
+ *
+ * Finishing is deliberately NOT this component's job. Opening the day is
+ * the wizard's last action, and the day is server state, so the decision
+ * "is this shop fitted out?" belongs to useOnboardingGate() in
+ * lib/queries/onboarding.ts -- which unmounts this component the moment the
+ * day opens. This component used to own a second copy of that decision, an
+ * effect keyed only on `day?.status`; when the day was ALREADY open on
+ * arrival the status never changed, so the effect never fired and the
+ * wizard had no exit at all. Two mechanisms for one decision is what made
+ * that possible; there is now one.
  */
-export function Onboarding({ onFinish }: { onFinish: () => void }) {
+export function Onboarding() {
   const { data: loaded, isLoading } = useOnboardingState();
   const save = useSaveOnboardingState();
-  const { data: day } = useDayStatus();
   const [state, setState] = useState<OnboardingState>(EMPTY_ONBOARDING_STATE);
   const [showOpenShop, setShowOpenShop] = useState(false);
   // Once the wizard has hydrated from the persisted state (or the user has
@@ -45,16 +53,6 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
       setState(loaded);
     }
   }, [loaded]);
-
-  useEffect(() => {
-    if (day?.status === "open" && showOpenShop) {
-      setShowOpenShop(false);
-      const finished = { ...state, completed: true };
-      setState(finished);
-      void save.mutateAsync(finished).then(onFinish);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [day?.status]);
 
   function persist(next: OnboardingState) {
     setState(next);
