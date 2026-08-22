@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { setNonce } from "get-nonce";
 import { useEffect, useState } from "react";
 import { ToastViewport } from "@/components/design/Toast";
-import { createQueryClient } from "@/lib/query-client";
+import { clearCacheOnAuthChange, createQueryClient } from "@/lib/query-client";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // Error surfacing lives in createQueryClient() -- see lib/query-client.ts
@@ -27,6 +27,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     const nonce = document.querySelector('meta[name="x-nonce"]')?.getAttribute("content");
     if (nonce) setNonce(nonce);
   }, []);
+
+  // Tenant-scoped cache must not survive a change of who is signed in --
+  // see lib/query-client.ts::clearCacheOnAuthChange, and its tests.
+  useEffect(() => clearCacheOnAuthChange(client), [client]);
 
   return (
     <QueryClientProvider client={client}>

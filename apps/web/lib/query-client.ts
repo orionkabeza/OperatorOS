@@ -1,6 +1,7 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api/config";
 import { describeApiError } from "./api/error-message";
+import { useAuthStore } from "./auth-store";
 import { useToastStore } from "./toast-store";
 
 /**
@@ -19,6 +20,26 @@ import { useToastStore } from "./toast-store";
  */
 export function reportError(error: unknown): void {
   useToastStore.getState().push({ message: describeApiError(error), durationMs: 8000 });
+}
+
+/**
+ * Drops every cached answer whenever the sign-in state changes, and returns
+ * the unsubscribe.
+ *
+ * The cache outlives a sign-out, so signing into a second business on the
+ * same device served the first one's cached data — business name, day
+ * status, everything — until each query happened to refetch. All of it is
+ * tenant-scoped. Clearing wholesale rather than per-key means a query added
+ * later is covered without anyone remembering this exists, which is the
+ * same reason error surfacing lives on the cache instead of in each hook.
+ */
+export function clearCacheOnAuthChange(client: QueryClient): () => void {
+  let previous = useAuthStore.getState().signedIn;
+  return useAuthStore.subscribe((state) => {
+    if (state.signedIn === previous) return;
+    previous = state.signedIn;
+    client.clear();
+  });
 }
 
 export function createQueryClient(): QueryClient {

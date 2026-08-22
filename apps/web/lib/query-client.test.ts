@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createQueryClient } from "./query-client";
+import { clearCacheOnAuthChange, createQueryClient } from "./query-client";
 import { ApiError } from "./api/config";
 import { useToastStore } from "./toast-store";
+import { useAuthStore } from "./auth-store";
 
 function messages() {
   return useToastStore.getState().toasts.map((t) => t.message);
@@ -94,5 +95,60 @@ describe("global request-error surfacing", () => {
       .catch(() => undefined);
 
     expect(attempts).toBe(1);
+  });
+});
+
+describe("cross-tenant cache hygiene", () => {
+  // Signing into a second business on the same device served the first
+  // one's cached answers -- business name, day status, everything -- until
+  // each query happened to refetch. Showing a shopkeeper another shop's
+  // figures even briefly is the failure this codebase treats as
+  // build-failing server-side.
+  it("drops cached tenant data when someone signs out", () => {
+    useAuthStore.setState({ signedIn: true });
+    const client = createQueryClient();
+    const stop = clearCacheOnAuthChange(client);
+    client.setQueryData(["identity"], { businessName: "Kagarama Hardware" });
+
+    useAuthStore.setState({ signedIn: false });
+
+    expect(client.getQueryData(["identity"])).toBeUndefined();
+    stop();
+  });
+
+  it("drops it on sign-in too, so a second tenant starts clean", () => {
+    useAuthStore.setState({ signedIn: false });
+    const client = createQueryClient();
+    const stop = clearCacheOnAuthChange(client);
+    client.setQueryData(["identity"], { businessName: "Previous Shop" });
+
+    useAuthStore.setState({ signedIn: true });
+
+    expect(client.getQueryData(["identity"])).toBeUndefined();
+    stop();
+  });
+
+  it("leaves the cache alone when nothing about sign-in changed", () => {
+    useAuthStore.setState({ signedIn: true, shutterState: "idle" });
+    const client = createQueryClient();
+    const stop = clearCacheOnAuthChange(client);
+    client.setQueryData(["identity"], { businessName: "Kagarama Hardware" });
+
+    // An unrelated store update must not throw the day's data away.
+    useAuthStore.setState({ businessSlug: "typing-a-slug" });
+
+    expect(client.getQueryData(["identity"])).toEqual({ businessName: "Kagarama Hardware" });
+    stop();
+  });
+
+  it("stops listening once unsubscribed", () => {
+    useAuthStore.setState({ signedIn: true });
+    const client = createQueryClient();
+    clearCacheOnAuthChange(client)();
+    client.setQueryData(["identity"], { businessName: "Kagarama Hardware" });
+
+    useAuthStore.setState({ signedIn: false });
+
+    expect(client.getQueryData(["identity"])).toEqual({ businessName: "Kagarama Hardware" });
   });
 });
