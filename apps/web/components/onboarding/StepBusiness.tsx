@@ -1,4 +1,5 @@
 import { Input } from "../design/Input";
+import { KeptOnThisDevice } from "./KeptOnThisDevice";
 import { Select } from "./Select";
 import type { BusinessType, OnboardingBusiness } from "@/lib/api/types";
 
@@ -24,6 +25,9 @@ export function StepBusiness({
   return (
     <div className="flex flex-col gap-16">
       <p className="text-body text-ink-soft">Tell us about the business — this is the one step you can&apos;t skip.</p>
+      <KeptOnThisDevice>
+        These details don&apos;t rename your account yet — your shop stays under the name it was registered with.
+      </KeptOnThisDevice>
       <Input
         label="Trading name"
         value={value.tradingName ?? ""}

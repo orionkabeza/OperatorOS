@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "../design/Button";
 import { Input } from "../design/Input";
+import { KeptOnThisDevice } from "./KeptOnThisDevice";
 import { Select } from "./Select";
 import type { OnboardingStaffInvite } from "@/lib/api/types";
 
@@ -34,9 +35,11 @@ export function StepPeople({
   return (
     <div className="flex flex-col gap-16">
       <p className="text-body text-ink-soft">
-        Add staff by phone number. Each gets a WhatsApp invite with a one-time PIN setup link, valid 48 hours. You can
-        skip this and add people later.
+        Note down who works here, so the list is ready when you set them up. You can skip this and add people later.
       </p>
+      <KeptOnThisDevice>
+        No account is created and no invite is sent yet — nobody here can sign in until staff accounts land.
+      </KeptOnThisDevice>
 
       <div className="flex flex-wrap items-end gap-8">
         <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />

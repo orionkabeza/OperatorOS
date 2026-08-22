@@ -4,6 +4,7 @@ import { minorUnits } from "@operatoros/shared";
 import { useState } from "react";
 import { Button } from "../design/Button";
 import { Input } from "../design/Input";
+import { KeptOnThisDevice } from "./KeptOnThisDevice";
 import { Money } from "../design/Money";
 import type { OnboardingOpeningBalances } from "@/lib/api/types";
 
@@ -31,6 +32,11 @@ export function StepBooks({
 
   return (
     <div className="flex flex-col gap-24">
+      <KeptOnThisDevice>
+        Nothing on this step reaches the books yet — the Debt Book, the Cash Box and supplier balances all start empty
+        when the shop opens. Keep your existing record of who owes you until opening balances can be posted.
+      </KeptOnThisDevice>
+
       <div className="grid grid-cols-2 gap-16">
         <Input
           label="Cash in the till"
@@ -51,7 +57,8 @@ export function StepBooks({
       <div>
         <h4 className="mb-4 text-table font-bold text-ink">Who already owes you</h4>
         <p className="mb-12 text-meta text-ink-soft">
-          This is the single highest-value step here — without it, the Debt Book starts empty on day one.
+          The single highest-value thing to get down on paper — though for now the Debt Book still starts empty on day
+          one, and you&apos;ll need to enter these debts again once it can hold them.
         </p>
         <div className="flex flex-wrap items-end gap-8">
           <Input label="Customer name" value={debtorName} onChange={(e) => setDebtorName(e.target.value)} />
