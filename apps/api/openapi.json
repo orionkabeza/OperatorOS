@@ -1645,6 +1645,26 @@
         "title": "InvoiceOut",
         "type": "object"
       },
+      "LocationSummaryOut": {
+        "additionalProperties": false,
+        "description": "Just enough to name a branch in the UI. `GET /stock/locations` returns\nper-product stock rows (empty for a business with no products), so until\nnow nothing could turn a location id into something readable.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "LocationSummaryOut",
+        "type": "object"
+      },
       "LogCallRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1749,6 +1769,10 @@
             "title": "Business Id",
             "type": "string"
           },
+          "business_name": {
+            "title": "Business Name",
+            "type": "string"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -1764,6 +1788,13 @@
             "title": "Location Ids",
             "type": "array"
           },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/LocationSummaryOut"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
           "role_key": {
             "title": "Role Key",
             "type": "string"
@@ -1772,9 +1803,11 @@
         "required": [
           "id",
           "business_id",
+          "business_name",
           "display_name",
           "role_key",
-          "location_ids"
+          "location_ids",
+          "locations"
         ],
         "title": "MeOut",
         "type": "object"

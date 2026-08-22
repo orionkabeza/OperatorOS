@@ -21,12 +21,30 @@ class UserOut(ApiModel):
     status: str
 
 
+class LocationSummaryOut(ApiModel):
+    """Just enough to name a branch in the UI. `GET /stock/locations` returns
+    per-product stock rows (empty for a business with no products), so until
+    now nothing could turn a location id into something readable."""
+
+    id: str
+    name: str
+
+
 class MeOut(ApiModel):
     id: str
     business_id: str
+    #: The shop's own trading name. Carried here because there is no other
+    #: route that returns it, and the top bar names the business on every
+    #: screen -- without it the frontend had nothing to show and shipped a
+    #: hard-coded one from the mock fixtures to every real tenant.
+    business_name: str
     display_name: str
     role_key: str
     location_ids: list[str]
+    #: The same locations as `location_ids`, with their names, in the same
+    #: order. Kept alongside rather than replacing it -- `location_ids` is
+    #: what every caller resolving a default location already reads.
+    locations: list[LocationSummaryOut]
 
 
 class RoleChangeRequest(ApiModel):

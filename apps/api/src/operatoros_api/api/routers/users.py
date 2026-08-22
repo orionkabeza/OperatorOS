@@ -27,6 +27,8 @@ from operatoros_api.idempotency_service import (
     get_existing,
 )
 from operatoros_api.models.tenancy import (
+    Business,
+    Location,
     Permission,
     Role,
     RolePermission,
@@ -37,6 +39,7 @@ from operatoros_api.models.tenancy import (
 from operatoros_api.schemas.users import (
     ApproverOut,
     GrantRequest,
+    LocationSummaryOut,
     MeOut,
     RoleChangeRequest,
     UserCreateRequest,
@@ -67,12 +70,29 @@ async def get_me(ctx: RequestContext = Depends(get_current_context)) -> MeOut:
         # the same transaction -- unreachable in practice. An explicit
         # raise, not `assert` (bandit B101: stripped under `python -O`).
         raise RuntimeError("authenticated user row disappeared mid-request")
+    business = await ctx.session.get(Business, ctx.business_id)
+    if business is None:
+        raise RuntimeError("authenticated business row disappeared mid-request")
+    named = {
+        row.id: row.name
+        for row in (
+            await ctx.session.execute(select(Location).where(Location.id.in_(ctx.location_ids)))
+        )
+        .scalars()
+        .all()
+    }
     return MeOut(
         id=ctx.user_id,
         business_id=ctx.business_id,
+        business_name=business.name,
         display_name=user.display_name,
         role_key=ctx.role_key,
         location_ids=ctx.location_ids,
+        # Ordered to match location_ids, and skipping any id with no row
+        # rather than inventing a placeholder name for it.
+        locations=[
+            LocationSummaryOut(id=lid, name=named[lid]) for lid in ctx.location_ids if lid in named
+        ],
     )
 
 
@@ -117,9 +137,7 @@ async def list_approvers(
         .order_by(User.display_name)
     )
     # `User.role` is lazy="joined", so the row set can repeat a user.
-    return [
-        ApproverOut(id=u.id, display_name=u.display_name) for u in result.scalars().unique()
-    ]
+    return [ApproverOut(id=u.id, display_name=u.display_name) for u in result.scalars().unique()]
 
 
 @router.get("/{user_id}", response_model=UserOut)

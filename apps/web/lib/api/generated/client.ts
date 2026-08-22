@@ -917,11 +917,14 @@ const UserCreateRequest = z.object({
   secret: z.string(),
 });
 const ApproverOut = z.object({ display_name: z.string(), id: z.string() });
+const LocationSummaryOut = z.object({ id: z.string(), name: z.string() });
 const MeOut = z.object({
   business_id: z.string(),
+  business_name: z.string(),
   display_name: z.string(),
   id: z.string(),
   location_ids: z.array(z.string()),
+  locations: z.array(LocationSummaryOut),
   role_key: z.string(),
 });
 const GrantRequest = z.object({
@@ -1065,6 +1068,7 @@ export const schemas = {
   UserOut,
   UserCreateRequest,
   ApproverOut,
+  LocationSummaryOut,
   MeOut,
   GrantRequest,
   RoleChangeRequest,
