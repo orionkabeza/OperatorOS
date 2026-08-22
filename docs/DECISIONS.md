@@ -884,3 +884,20 @@ Also gives `commitImport` an explicit failure for the no-units case rather than 
 - *Ask the user to pick a unit in the import screen.* Worth having eventually, but it does not fix the underlying state — a business with no units is broken for single-product creation too, not only for imports.
 
 **How to apply:** when adding anything a record structurally requires (a unit, a location, a category), check what a *brand-new* tenant actually has, not what the test fixtures have. The two drifted here precisely because the fixtures were built by hand, and that difference hid a bug every real signup would hit on day one.
+
+---
+
+## 2026-08-22 — Deleting a business needs the projection guards stood down, briefly
+
+**Found by:** cleaning up demo tenants. `DELETE FROM businesses` failed with `Direct writes to money_location_balance are not allowed; write through the projection framework.`
+
+**Why:** every tenant table cascades from `businesses.id`, but the event-sourced projection tables carry a `reject_direct_projection_write()` trigger, and a foreign-key cascade issues an ordinary `DELETE` that the trigger correctly refuses. The guard is doing its job — a projection must only ever be rebuilt from events — it simply also catches the one legitimate case where a projection row should disappear because its whole tenant is going.
+
+**Decision:** `apps/api/scripts/delete_business.py`, rather than another ad-hoc one-liner. It disables the guard triggers, deletes, and re-enables them, all inside one transaction — Postgres DDL is transactional, so a failure rolls the re-enable back with everything else and there is no path that leaves the guards switched off. The guarded tables are discovered from `pg_trigger` by function name rather than hard-coded, so a projection added later is covered without anyone remembering this file exists. Requires `OPERATOROS_DATABASE_URL_MIGRATE`: the app's own role has no `DELETE` grant on `businesses`, which is deliberate and stays that way. Prompts for typed confirmation unless `--yes`.
+
+**Alternatives rejected:**
+- *`SET session_replication_role = replica`.* Disables user triggers, but also the FK triggers that perform the cascade — the delete would then fail on the first referencing row instead.
+- *Drop the projection guard.* It is one of the few things preventing a projection from silently diverging from its event stream. A tenant deletion is rare and administrative; the guard protects every ordinary write.
+- *Grant the app role `DELETE` on `businesses` and expose an endpoint.* Deleting a tenant and everything it owns should not be reachable from the running application at all.
+
+**How to apply:** `.venv/bin/python scripts/delete_business.py --keep <slug>` (or list slugs to remove) with the migrate credential in the environment. Anything that cascades into a projection table hits this same wall — reach for this script rather than re-deriving the trigger dance.
