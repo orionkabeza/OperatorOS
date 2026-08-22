@@ -81,10 +81,23 @@ describe("Shutter — business slug field", () => {
   // their PIN while that is in flight, only to yank the form away, is worse
   // than making them wait a beat.
   it("holds the sign-in form until the session check comes back", () => {
+    // The marker a previous sign-in leaves behind — without it there is
+    // nothing to check and the form renders straight away.
+    window.localStorage.setItem("operatoros_session_hint", "1");
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
     useAuthStore.setState({ sessionChecked: false });
+
     render(<Shutter />);
 
     expect(screen.getByText("Opening up…")).toBeInTheDocument();
     expect(screen.queryByLabelText("Business")).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the form immediately for a browser that has never signed in", () => {
+    useAuthStore.setState({ sessionChecked: false });
+    render(<Shutter />);
+
+    expect(screen.getByLabelText("Business")).toBeInTheDocument();
   });
 });

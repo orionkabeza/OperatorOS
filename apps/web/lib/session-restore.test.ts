@@ -10,9 +10,13 @@ function fetchReturning(status: number) {
   return vi.fn(async () => ({ ok: status >= 200 && status < 300, status, json: async () => ({}) }));
 }
 
+const HINT = "operatoros_session_hint";
+
 describe("restoring a session after a page refresh", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    // Set by a successful sign-in. Without it there is nothing to restore.
+    window.localStorage.setItem(HINT, "1");
     useAuthStore.setState({ signedIn: false, sessionChecked: false, rememberedSlug: "" });
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -34,6 +38,30 @@ describe("restoring a session after a page refresh", () => {
 
     expect(useAuthStore.getState().signedIn).toBe(false);
     expect(useAuthStore.getState().sessionChecked).toBe(true);
+    // And stops asking, so an expired session doesn't 401 on every load.
+    expect(window.localStorage.getItem(HINT)).toBe(null);
+  });
+
+  // A first-time visitor has no session to restore, and the request would be
+  // a guaranteed 401 that the browser logs as a console error on the login
+  // page of every single first visit.
+  it("does not ask at all when nobody has ever signed in here", async () => {
+    window.localStorage.removeItem(HINT);
+    const fetchMock = fetchReturning(200);
+    vi.stubGlobal("fetch", fetchMock);
+    await useAuthStore.getState().restoreSession();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().signedIn).toBe(false);
+    expect(useAuthStore.getState().sessionChecked).toBe(true);
+  });
+
+  // Losing the marker on a blip would sign the shopkeeper out for good.
+  it("keeps the marker when the request throws, so the next load retries", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    await useAuthStore.getState().restoreSession();
+
+    expect(window.localStorage.getItem(HINT)).toBe("1");
   });
 
   // Fails closed: an unreachable server must never be read as "signed in".

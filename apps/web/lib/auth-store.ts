@@ -18,6 +18,15 @@ import { API_BASE_URL, resetDefaultLocationId, USE_MOCK_API } from "@/lib/api/co
 export type ShutterState = "idle" | "submitting" | "wrong-credentials" | "locked-out" | "two-factor";
 
 const BUSINESS_SLUG_KEY = "operatoros_last_business_slug";
+/**
+ * A readable marker that this browser signed in at some point. The real
+ * session tokens are httpOnly and invisible to JS, so this is the only way
+ * to tell "might still be signed in, worth asking" from "definitely never
+ * signed in here". It authorises nothing on its own -- the server decides,
+ * and this only spares a first-time visitor a `GET /users/me` that is
+ * guaranteed to 401 and to log a console error on the login page.
+ */
+const SESSION_HINT_KEY = "operatoros_session_hint";
 const MOCK_PHONE = "788402219";
 const MOCK_PIN = "142857";
 const MOCK_CODE = "000000";
@@ -29,6 +38,16 @@ function readLastBusinessSlug(): string {
 
 function rememberBusinessSlug(slug: string): void {
   if (typeof window !== "undefined" && slug) window.localStorage.setItem(BUSINESS_SLUG_KEY, slug);
+}
+
+function setSessionHint(present: boolean): void {
+  if (typeof window === "undefined") return;
+  if (present) window.localStorage.setItem(SESSION_HINT_KEY, "1");
+  else window.localStorage.removeItem(SESSION_HINT_KEY);
+}
+
+function hasSessionHint(): boolean {
+  return typeof window !== "undefined" && window.localStorage.getItem(SESSION_HINT_KEY) === "1";
 }
 
 /**
@@ -113,11 +132,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   sessionChecked: USE_MOCK_API,
   restoreSession: async () => {
     if (USE_MOCK_API || get().sessionChecked) return;
+    // Nobody has ever signed in on this browser, so there is nothing to
+    // restore and the request would be a guaranteed 401 -- which the
+    // browser logs as a console error on the login page of every
+    // first-time visit.
+    if (!hasSessionHint()) {
+      set({ sessionChecked: true });
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/users/me`, { credentials: "include" });
-      if (res.ok) set({ signedIn: true, shutterState: "idle", rememberedSlug: readLastBusinessSlug() });
+      if (res.ok) {
+        set({ signedIn: true, shutterState: "idle", rememberedSlug: readLastBusinessSlug() });
+      } else {
+        // Expired or revoked: stop asking on every load until the next
+        // successful sign-in puts the marker back.
+        setSessionHint(false);
+      }
     } catch {
-      // Offline or unreachable -- the Shutter is the honest answer.
+      // Offline or unreachable -- the Shutter is the honest answer, and the
+      // marker stays so the next load tries again.
     }
     set({ sessionChecked: true });
   },
@@ -180,6 +214,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       rememberBusinessSlug(businessSlug);
+      setSessionHint(true);
       set({
         signedIn: true,
         shutterState: "idle",
@@ -222,6 +257,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       pendingChallengeToken = null;
       rememberBusinessSlug(get().businessSlug);
+      setSessionHint(true);
       set({ signedIn: true, shutterState: "idle", rememberedSlug: get().businessSlug });
     } catch {
       set({ shutterState: "wrong-credentials" });
@@ -233,6 +269,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await fetch("/session/logout", { method: "POST" }).catch(() => undefined);
     }
     pendingChallengeToken = null;
+    setSessionHint(false);
     resetDefaultLocationId();
     set({ signedIn: false, shutterState: "idle" });
   },
