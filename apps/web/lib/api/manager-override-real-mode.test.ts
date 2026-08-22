@@ -10,22 +10,31 @@ const { DEMO_MANAGER_PIN } = await import("../mock/seed");
 describe("verifyManagerOverridePin against a real backend", () => {
   // The regression: components compared the typed PIN to DEMO_MANAGER_PIN
   // themselves, so "9999" showed approval and the sale then came back 422 --
-  // apps/api requires a manager user id alongside the PIN, and sales.ts
-  // always sends null. A local yes the server turns into a no is worse than
-  // an honest no.
-  it("never approves the demo PIN", () => {
-    const outcome = verifyManagerOverridePin(DEMO_MANAGER_PIN);
-    expect(outcome.approved).toBe(false);
+  // apps/api verifies the PIN against a specific manager's stored hash, and
+  // sales.ts sent manager_override_user_id: null.
+  it("never approves on the demo PIN alone", () => {
+    expect(verifyManagerOverridePin(DEMO_MANAGER_PIN).approved).toBe(false);
   });
 
-  it("explains why instead of just saying the PIN was wrong", () => {
-    const outcome = verifyManagerOverridePin(DEMO_MANAGER_PIN);
+  it("requires an approving manager to be named", () => {
+    const outcome = verifyManagerOverridePin("1234");
     if (outcome.approved) throw new Error("expected refusal");
-    expect(outcome.message).not.toBe("Wrong PIN.");
-    expect(outcome.message).toMatch(/isn't available yet/i);
+    expect(outcome.message).toMatch(/which manager/i);
   });
 
-  it("refuses any other PIN too", () => {
-    expect(verifyManagerOverridePin("1234").approved).toBe(false);
+  it("requires a PIN once a manager is chosen", () => {
+    const outcome = verifyManagerOverridePin("   ", "user-manager-1");
+    if (outcome.approved) throw new Error("expected refusal");
+    expect(outcome.message).toMatch(/PIN/i);
+  });
+
+  // The PIN is deliberately NOT checked here: the hash lives in the
+  // database and the check is rate-limited server-side. The client's job is
+  // to carry both halves so _verify_manager_override can do its work; a
+  // wrong PIN surfaces as the sale request's own error.
+  it("passes the manager id through once both halves are present", () => {
+    const outcome = verifyManagerOverridePin("4321", "user-manager-1");
+    if (!outcome.approved) throw new Error("expected approval to proceed");
+    expect(outcome.managerUserId).toBe("user-manager-1");
   });
 });

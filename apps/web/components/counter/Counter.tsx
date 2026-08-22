@@ -83,10 +83,15 @@ export function Counter() {
   async function handleCompletePayment(payments: PaymentLineInput[], receiptChannel: ReceiptChannel) {
     const customerId = useBasketStore.getState().customerId;
     const currentLines = useBasketStore.getState().lines;
+    const { managerPin, managerUserId } = useBasketStore.getState().discount;
     const sale = await recordSale.mutateAsync({
       lines: currentLines.map(({ lineId, note, ...rest }) => ({ ...rest, ...(note ? { note } : {}) })),
       customerId,
       discountMinor: discountMinorValue,
+      // Only meaningful when the discount crossed the approval threshold;
+      // apps/api ignores them otherwise.
+      ...(managerPin ? { discountManagerPin: managerPin } : {}),
+      ...(managerUserId ? { discountManagerUserId: managerUserId } : {}),
       payments,
       receiptChannel,
     });

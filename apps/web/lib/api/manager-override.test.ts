@@ -8,12 +8,19 @@ import { DEMO_MANAGER_PIN } from "../mock/seed";
 // env var before importing.
 describe("verifyManagerOverridePin (mock mode)", () => {
   it("approves the demo PIN", () => {
-    expect(verifyManagerOverridePin(DEMO_MANAGER_PIN)).toEqual({ approved: true });
+    const outcome = verifyManagerOverridePin(DEMO_MANAGER_PIN);
+    expect(outcome.approved).toBe(true);
   });
 
   it("rejects anything else with a readable message", () => {
     const outcome = verifyManagerOverridePin("0000");
     expect(outcome.approved).toBe(false);
     if (!outcome.approved) expect(outcome.message).toBe("Wrong PIN.");
+  });
+
+  it("carries no manager id — the mock backend has no user to verify against", () => {
+    const outcome = verifyManagerOverridePin(DEMO_MANAGER_PIN);
+    if (!outcome.approved) throw new Error("expected approval");
+    expect(outcome.managerUserId).toBeNull();
   });
 });

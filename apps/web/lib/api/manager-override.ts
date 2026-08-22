@@ -1,5 +1,5 @@
 import { DEMO_MANAGER_PIN } from "../mock/seed";
-import { USE_MOCK_API } from "./config";
+import { apiRequest, USE_MOCK_API } from "./config";
 
 /**
  * Manager-PIN approval for the flows that need one: a discount above
@@ -26,13 +26,61 @@ import { USE_MOCK_API } from "./config";
  * (`GET /api/v1/users` can list them) and send that id alongside the PIN.
  * See docs/DECISIONS.md.
  */
-export type ManagerOverrideOutcome = { approved: true } | { approved: false; message: string };
+export type ManagerOverrideOutcome =
+  | { approved: true; managerUserId: string | null }
+  | { approved: false; message: string };
 
-const NOT_WIRED_UP =
-  "Manager approval isn't available yet — it needs to record which manager approved, " +
-  "and this screen can't ask that yet. Lower the amount, or ask an owner to make the change.";
+export interface Approver {
+  id: string;
+  displayName: string;
+}
 
-export function verifyManagerOverridePin(pin: string): ManagerOverrideOutcome {
-  if (!USE_MOCK_API) return { approved: false, message: NOT_WIRED_UP };
-  return pin === DEMO_MANAGER_PIN ? { approved: true } : { approved: false, message: "Wrong PIN." };
+/** Capability keys apps/api checks for each override (capabilities.py). */
+export const OVERRIDE_CAPABILITIES = {
+  discount: "sale.discount.over_threshold",
+  priceOverride: "sale.price_override",
+  creditLimit: "debt.credit_override",
+} as const;
+
+/**
+ * Who can approve a given override. `GET /api/v1/users` can't answer this
+ * for a cashier — it needs `user.manage`, which cashiers deliberately lack
+ * — so apps/api grew `GET /api/v1/users/approvers`, which returns just an
+ * id and a display name for the users holding that one capability.
+ */
+export async function listApprovers(capability: string): Promise<Approver[]> {
+  if (USE_MOCK_API) {
+    return [{ id: "user-manager-demo", displayName: "Manager (demo)" }];
+  }
+  const raw = await apiRequest<{ id: string; display_name: string }[]>(
+    "GET",
+    "/api/v1/users/approvers",
+    { query: { capability } },
+  );
+  return raw.map((a) => ({ id: a.id, displayName: a.display_name }));
+}
+
+/**
+ * Checks a manager's PIN locally in mock mode; against a real backend the
+ * PIN is never verified here at all — it is carried with the request and
+ * checked server-side by `_verify_manager_override`, which is the only
+ * place that can verify it (the hash lives in the database, and the check
+ * is rate-limited there).
+ *
+ * The old shape compared the typed PIN to `DEMO_MANAGER_PIN` in three
+ * components, so real mode reported approval and the sale then came back
+ * 422 — apps/api requires the approving manager's *user id* too, and
+ * `sales.ts` sent null. Returning the id alongside the approval is what
+ * lets the caller actually send it.
+ */
+export function verifyManagerOverridePin(pin: string, managerUserId?: string): ManagerOverrideOutcome {
+  if (USE_MOCK_API) {
+    return pin === DEMO_MANAGER_PIN
+      ? { approved: true, managerUserId: null }
+      : { approved: false, message: "Wrong PIN." };
+  }
+  if (!managerUserId) return { approved: false, message: "Choose which manager is approving." };
+  if (!pin.trim()) return { approved: false, message: "Enter the manager's PIN." };
+  // Server-verified: a wrong PIN surfaces as the request's own error.
+  return { approved: true, managerUserId };
 }

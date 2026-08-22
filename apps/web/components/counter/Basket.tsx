@@ -7,7 +7,8 @@ import { BasketRow } from "./BasketRow";
 import { CustomerPicker } from "./CustomerPicker";
 import { discountFromPercent, grandTotalMinor, subtotalMinor, vatMinor } from "@/lib/basket-math";
 import { BUSINESS_VAT_REGISTERED, DISCOUNT_MANAGER_PIN_THRESHOLD_PERCENT, VAT_RATE_PERCENT } from "@/lib/constants";
-import { verifyManagerOverridePin } from "@/lib/api/manager-override";
+import { OVERRIDE_CAPABILITIES, verifyManagerOverridePin } from "@/lib/api/manager-override";
+import { useApprovers } from "@/lib/queries/approvers";
 import { useBasketStore } from "@/lib/stores/basket-store";
 import type { Product } from "@/lib/api/types";
 import { minorUnits } from "@operatoros/shared";
@@ -31,6 +32,10 @@ export function Basket({
     useBasketStore();
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
+  const [managerId, setManagerId] = useState("");
+  // Who may approve an over-threshold discount. Empty in mock mode's single
+  // demo manager case; against a real backend this is the actual staff list.
+  const { data: approvers } = useApprovers(OVERRIDE_CAPABILITIES.discount);
 
   const productMap = new Map(products.map((p) => [p.id, p]));
   const subtotal = subtotalMinor(lines);
@@ -54,9 +59,15 @@ export function Basket({
         : undefined;
 
   function verifyPin() {
-    const outcome = verifyManagerOverridePin(pinInput);
+    const outcome = verifyManagerOverridePin(pinInput, managerId || undefined);
     if (outcome.approved) {
-      setDiscount({ managerPinVerified: true });
+      // The PIN itself is verified server-side against this manager, so it
+      // has to travel with the sale rather than being discarded here.
+      setDiscount({
+        managerPinVerified: true,
+        managerPin: pinInput,
+        managerUserId: outcome.managerUserId,
+      });
       setPinError(null);
       setPinInput("");
     } else {
@@ -130,6 +141,21 @@ export function Basket({
             <label htmlFor="discount-pin" className="text-meta text-ink-soft">
               Manager PIN required for a discount over {DISCOUNT_MANAGER_PIN_THRESHOLD_PERCENT}%
             </label>
+            {approvers && approvers.length > 0 ? (
+              <select
+                aria-label="Approving manager"
+                value={managerId}
+                onChange={(e) => setManagerId(e.target.value)}
+                className="h-control rounded border border-rule bg-paper px-8 text-table text-ink"
+              >
+                <option value="">Who is approving?</option>
+                {approvers.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.displayName}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <input
               id="discount-pin"
               type="password"

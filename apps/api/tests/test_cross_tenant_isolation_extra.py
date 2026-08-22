@@ -281,11 +281,19 @@ async def test_pay_link_flipped_signature_byte_is_rejected(
     assert link_resp.status_code == 201, link_resp.text
     token = link_resp.json()["token"]
 
-    # Flip the last character of the signature segment.
+    # Flip the FIRST character of the signature, not the last. An HS256
+    # signature is 256 bits carried in 43 base64url characters -- 258 bits
+    # of capacity -- so the final character's low 2 bits are padding that
+    # decoders ignore. Several distinct final characters therefore decode
+    # to byte-identical signatures, and rewriting it to "A" left the token
+    # genuinely valid roughly one run in sixteen: a flaky test that failed
+    # in a full run and passed in isolation. Every bit of the first
+    # character is significant, so this always produces a different
+    # signature.
     header_b64, payload_b64, sig_b64 = token.split(".")
-    last_char = sig_b64[-1]
-    replacement = "A" if last_char != "A" else "B"
-    tampered = f"{header_b64}.{payload_b64}.{sig_b64[:-1]}{replacement}"
+    first_char = sig_b64[0]
+    replacement = "A" if first_char != "A" else "B"
+    tampered = f"{header_b64}.{payload_b64}.{replacement}{sig_b64[1:]}"
 
     resp = await client.get(f"/api/pay/{tampered}")
     assert resp.status_code == 404, resp.text

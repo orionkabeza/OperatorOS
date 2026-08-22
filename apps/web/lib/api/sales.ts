@@ -62,18 +62,15 @@ async function mapSaleOut(s: z.infer<typeof schemas.SaleOut>, products: Product[
 
 /**
  * The Counter's basket-to-sale call — atomic in the real backend (spec D.4:
- * one transaction). `manager_override_user_id` is always sent as `null`
- * here: `RecordSaleInput`/`PaymentLineInput` only ever capture a PIN
- * (`discountManagerPin`/`managerPinOverride`), never WHICH manager entered
- * it, but the real endpoint's `_verify_manager_override` needs both a user
- * id and a PIN to look up and verify against — a PIN alone can never
- * satisfy it server-side. This means every manager-PIN-gated override
- * (min-price override, >10% discount, over-credit-limit) that currently
- * "works" against the mock will be REJECTED by the real backend today.
- * Flagged prominently in docs/DECISIONS.md and the delivery report — this
- * is a real gap in the frontend's data model, not something lib/api alone
- * can paper over without inventing a manager-selection UI that doesn't
- * exist yet.
+ * one transaction).
+ *
+ * `manager_override_user_id` used to be hard-coded `null` here because the
+ * frontend captured a PIN but never WHICH manager entered it, and
+ * `_verify_manager_override` returns False without both — so every
+ * PIN-gated override (min-price, over-threshold discount, over-credit-
+ * limit) was rejected 422 by the real backend while appearing to work
+ * against the mock. The Counter now asks who is approving (backed by
+ * `GET /api/v1/users/approvers`) and that id is carried through here.
  */
 export async function recordSale(input: RecordSaleInput): Promise<Sale> {
   if (USE_MOCK_API) return mockDelay(store.recordSale(input), 250);
@@ -89,7 +86,7 @@ export async function recordSale(input: RecordSaleInput): Promise<Sale> {
         line_discount_minor: l.lineDiscountMinor,
       })),
       payments: input.payments.map((p) => ({ method: p.method, amount_minor: p.amountMinor, reference: p.transactionRef ?? null })),
-      manager_override_user_id: null,
+      manager_override_user_id: input.discountManagerUserId ?? null,
       manager_override_pin: input.discountManagerPin ?? null,
       override_reason: null,
       allow_negative_stock: false,

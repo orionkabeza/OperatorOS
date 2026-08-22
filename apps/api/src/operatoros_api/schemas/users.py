@@ -37,3 +37,12 @@ class GrantRequest(ApiModel):
     permission_key: str
     effect: str  # "grant" | "revoke"
     location_id: str | None = None
+
+
+class ApproverOut(ApiModel):
+    """Deliberately narrower than `UserOut` — a cashier looking up who can
+    approve an override needs a name to pick, not a colleague's phone
+    number, email, or role listing."""
+
+    id: str
+    display_name: str

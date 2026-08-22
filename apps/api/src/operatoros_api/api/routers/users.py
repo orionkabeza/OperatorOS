@@ -19,14 +19,23 @@ from operatoros_api.api.deps import (
     require_capability,
 )
 from operatoros_api.audit_log import append_audit_log
+from operatoros_api.capabilities import CAPABILITIES
 from operatoros_api.idempotency_service import (
     claim_or_replay,
     complete,
     fingerprint_request,
     get_existing,
 )
-from operatoros_api.models.tenancy import Role, User, UserGrant, UserLocation
+from operatoros_api.models.tenancy import (
+    Permission,
+    Role,
+    RolePermission,
+    User,
+    UserGrant,
+    UserLocation,
+)
 from operatoros_api.schemas.users import (
+    ApproverOut,
     GrantRequest,
     MeOut,
     RoleChangeRequest,
@@ -73,6 +82,44 @@ async def list_users(
 ) -> list[UserOut]:
     result = await ctx.session.execute(select(User))
     return [_to_user_out(u, u.role.key) for u in result.scalars()]
+
+
+@router.get("/approvers", response_model=list[ApproverOut])
+async def list_approvers(
+    capability: str,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[ApproverOut]:
+    """Who can approve an override that the current user isn't allowed to
+    make alone -- a discount above the threshold, a credit-limit override, a
+    back-dated payment.
+
+    `sales.py::_verify_manager_override` needs BOTH a manager's user id and
+    that manager's PIN, so the Counter has to be able to name the approver.
+    `GET /users` can't serve that: it requires `user.manage`, which a
+    cashier deliberately does not have, so the frontend previously sent
+    `manager_override_user_id: null` and every over-threshold sale failed
+    422 no matter what PIN was typed.
+
+    Deliberately NOT capability-gated beyond being authenticated: a cashier
+    must be able to see who to ask. It returns only id and display name --
+    no phone, no email, no role listing -- for active users in the caller's
+    own business who hold the specific capability being requested. That is
+    strictly less than the shop's own staff already know about each other.
+    """
+    if capability not in CAPABILITIES:
+        raise HTTPException(status_code=422, detail="Unknown capability.")
+
+    result = await ctx.session.execute(
+        select(User)
+        .join(RolePermission, RolePermission.role_id == User.role_id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(User.status == "active", Permission.key == capability)
+        .order_by(User.display_name)
+    )
+    # `User.role` is lazy="joined", so the row set can repeat a user.
+    return [
+        ApproverOut(id=u.id, display_name=u.display_name) for u in result.scalars().unique()
+    ]
 
 
 @router.get("/{user_id}", response_model=UserOut)

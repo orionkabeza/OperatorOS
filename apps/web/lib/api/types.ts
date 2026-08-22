@@ -254,6 +254,8 @@ export interface RecordSaleInput {
   customerId: string | null;
   discountMinor: MinorUnits;
   discountManagerPin?: string;
+  /** Which manager approved it — apps/api verifies the PIN against this user. */
+  discountManagerUserId?: string | null;
   payments: PaymentLineInput[];
   receiptChannel: ReceiptChannel;
 }

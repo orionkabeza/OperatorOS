@@ -916,6 +916,7 @@ const UserCreateRequest = z.object({
   role_key: z.string(),
   secret: z.string(),
 });
+const ApproverOut = z.object({ display_name: z.string(), id: z.string() });
 const MeOut = z.object({
   business_id: z.string(),
   display_name: z.string(),
@@ -1063,6 +1064,7 @@ export const schemas = {
   TillCloseRequest,
   UserOut,
   UserCreateRequest,
+  ApproverOut,
   MeOut,
   GrantRequest,
   RoleChangeRequest,
@@ -3592,6 +3594,43 @@ only ever asserted about in a unit test.`,
       },
     ],
     response: UserOut,
+    errors: [
+      {
+        status: 422,
+        description: `Validation Error`,
+        schema: HTTPValidationError,
+      },
+    ],
+  },
+  {
+    method: "get",
+    path: "/api/v1/users/approvers",
+    alias: "list_approvers_api_v1_users_approvers_get",
+    description: `Who can approve an override that the current user isn&#x27;t allowed to
+make alone -- a discount above the threshold, a credit-limit override, a
+back-dated payment.
+
+&#x60;sales.py::_verify_manager_override&#x60; needs BOTH a manager&#x27;s user id and
+that manager&#x27;s PIN, so the Counter has to be able to name the approver.
+&#x60;GET /users&#x60; can&#x27;t serve that: it requires &#x60;user.manage&#x60;, which a
+cashier deliberately does not have, so the frontend previously sent
+&#x60;manager_override_user_id: null&#x60; and every over-threshold sale failed
+422 no matter what PIN was typed.
+
+Deliberately NOT capability-gated beyond being authenticated: a cashier
+must be able to see who to ask. It returns only id and display name --
+no phone, no email, no role listing -- for active users in the caller&#x27;s
+own business who hold the specific capability being requested. That is
+strictly less than the shop&#x27;s own staff already know about each other.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "capability",
+        type: "Query",
+        schema: z.string(),
+      },
+    ],
+    response: z.array(ApproverOut),
     errors: [
       {
         status: 422,

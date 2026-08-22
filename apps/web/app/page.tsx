@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { ToastViewport } from "@/components/design/Toast";
 import { Shutter } from "@/components/shell/Shutter";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOnboardingState } from "@/lib/queries/onboarding";
@@ -34,7 +33,6 @@ export default function Home() {
         )
       ) : null}
       <Shutter />
-      <ToastViewport />
     </>
   );
 }

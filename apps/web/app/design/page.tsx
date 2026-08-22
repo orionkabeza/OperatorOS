@@ -11,7 +11,6 @@ import { Input } from "@/components/design/Input";
 import { Money } from "@/components/design/Money";
 import { Qty } from "@/components/design/Qty";
 import { Table } from "@/components/design/Table";
-import { ToastViewport } from "@/components/design/Toast";
 import { useToastStore } from "@/lib/toast-store";
 import { TallyRail } from "@/components/shell/TallyRail";
 
@@ -171,7 +170,6 @@ export default function DesignRoute() {
         onConfirm={() => pushToast({ message: "Debt written off." })}
       />
 
-      <ToastViewport />
     </div>
   );
 }

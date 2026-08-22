@@ -39,6 +39,26 @@
         "title": "AllocationOut",
         "type": "object"
       },
+      "ApproverOut": {
+        "additionalProperties": false,
+        "description": "Deliberately narrower than `UserOut` \u2014 a cashier looking up who can\napprove an override needs a name to pick, not a colleague's phone\nnumber, email, or role listing.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "ApproverOut",
+        "type": "object"
+      },
       "BalanceCardOut": {
         "additionalProperties": false,
         "properties": {
@@ -11319,6 +11339,58 @@
           }
         ],
         "summary": "Create User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/approvers": {
+      "get": {
+        "description": "Who can approve an override that the current user isn't allowed to\nmake alone -- a discount above the threshold, a credit-limit override, a\nback-dated payment.\n\n`sales.py::_verify_manager_override` needs BOTH a manager's user id and\nthat manager's PIN, so the Counter has to be able to name the approver.\n`GET /users` can't serve that: it requires `user.manage`, which a\ncashier deliberately does not have, so the frontend previously sent\n`manager_override_user_id: null` and every over-threshold sale failed\n422 no matter what PIN was typed.\n\nDeliberately NOT capability-gated beyond being authenticated: a cashier\nmust be able to see who to ask. It returns only id and display name --\nno phone, no email, no role listing -- for active users in the caller's\nown business who hold the specific capability being requested. That is\nstrictly less than the shop's own staff already know about each other.",
+        "operationId": "list_approvers_api_v1_users_approvers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "capability",
+            "required": true,
+            "schema": {
+              "title": "Capability",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApproverOut"
+                  },
+                  "title": "Response List Approvers Api V1 Users Approvers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Approvers",
         "tags": [
           "users"
         ]

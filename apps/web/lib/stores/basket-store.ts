@@ -13,6 +13,14 @@ interface DiscountState {
   mode: "percent" | "amount";
   value: number; // percent (0-100) or minor units, depending on mode
   managerPinVerified: boolean;
+  /**
+   * Carried through to the sale. apps/api's `_verify_manager_override`
+   * needs BOTH the approving manager's user id and their PIN -- verifying
+   * only a boolean here is what made every over-threshold discount fail
+   * 422 against the real backend while passing against the mock.
+   */
+  managerPin?: string;
+  managerUserId?: string | null;
 }
 
 interface BasketState {
@@ -41,7 +49,7 @@ function newLineId() {
 export const useBasketStore = create<BasketState>((set, get) => ({
   lines: [],
   customerId: null,
-  discount: { mode: "percent", value: 0, managerPinVerified: false },
+  discount: { mode: "percent", value: 0, managerPinVerified: false, managerUserId: null },
   activeParkedTabId: null,
 
   addLine: (input) => {
@@ -87,7 +95,7 @@ export const useBasketStore = create<BasketState>((set, get) => ({
     set({
       lines: [],
       customerId: null,
-      discount: { mode: "percent", value: 0, managerPinVerified: false },
+      discount: { mode: "percent", value: 0, managerPinVerified: false, managerUserId: null },
       activeParkedTabId: null,
     }),
 
