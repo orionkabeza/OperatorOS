@@ -1,5 +1,5 @@
 import type { MinorUnits } from "@operatoros/shared";
-import { apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
+import { ApiError, apiRequest, getDefaultLocationId, newIdempotencyKey, notSupportedByBackend, USE_MOCK_API } from "./config";
 import * as store from "../mock/store";
 import { mockDelay } from "../mock/store";
 import { schemas } from "./generated/client";
@@ -64,15 +64,32 @@ export async function openDay(input: OpenDayInput): Promise<DaySession> {
   if (USE_MOCK_API) {
     return mockDelay(store.openDay({ countedMinor: input.countedMinor, reason: input.reason, reasonNote: input.reasonNote }));
   }
-  const raw = await apiRequest<unknown>("POST", "/api/v1/day/open", {
-    body: {
-      location_id: await getDefaultLocationId(),
-      counted_amount_minor: input.countedMinor,
-      variance_reason: combineVarianceReason(input.reason, input.reasonNote),
-    },
-    idempotencyKey: newIdempotencyKey(),
-  });
-  return mapDaySessionOut(schemas.DaySessionOut.parse(raw));
+  try {
+    const raw = await apiRequest<unknown>("POST", "/api/v1/day/open", {
+      body: {
+        location_id: await getDefaultLocationId(),
+        counted_amount_minor: input.countedMinor,
+        variance_reason: combineVarianceReason(input.reason, input.reasonNote),
+      },
+      idempotencyKey: newIdempotencyKey(),
+    });
+    return mapDaySessionOut(schemas.DaySessionOut.parse(raw));
+  } catch (error) {
+    // `POST /day/open` answers 409 when a day is already open at this
+    // location -- a second tab, a second device, or a double-submit. The
+    // caller's intent ("the shop should be open") is already satisfied, so
+    // adopt the session the server already has instead of reporting a
+    // failure the shopkeeper can do nothing about: there is no UI anywhere
+    // that can clear an open day except closing it, so a bare 409 here is a
+    // dead end. Only reconcile when a day really is open -- this endpoint's
+    // other 409 (an Idempotency-Key reused for a different body) has
+    // nothing to adopt and must still surface.
+    if (error instanceof ApiError && error.status === 409) {
+      const current = await getDayStatus();
+      if (current.status === "open") return current;
+    }
+    throw error;
+  }
 }
 
 /**
