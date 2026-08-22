@@ -31,6 +31,17 @@ function rememberBusinessSlug(slug: string): void {
   if (typeof window !== "undefined" && slug) window.localStorage.setItem(BUSINESS_SLUG_KEY, slug);
 }
 
+/**
+ * Which business anything stored in this browser belongs to. Returns "" in
+ * mock mode, where the Shutter has no business field at all and there is
+ * only ever one tenant -- callers scope by slug when there is one and fall
+ * back to an unscoped key when there isn't.
+ */
+export function currentBusinessSlug(): string {
+  const { businessSlug, rememberedSlug } = useAuthStore.getState();
+  return businessSlug || rememberedSlug || readLastBusinessSlug();
+}
+
 interface AuthState {
   signedIn: boolean;
   shutterState: ShutterState;

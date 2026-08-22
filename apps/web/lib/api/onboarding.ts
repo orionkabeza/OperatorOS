@@ -1,8 +1,22 @@
 import { USE_MOCK_API } from "./config";
+import { currentBusinessSlug } from "../auth-store";
 import { mockDelay } from "../mock/store";
 import type { OnboardingState } from "./types";
 
-const STORAGE_KEY = "operatoros.onboarding.v1";
+/**
+ * Scoped per business. This used to be one flat key shared by every tenant
+ * signed into the device, which broke in both directions: signing into a
+ * brand-new business inherited the previous one's finished wizard and
+ * skipped setup entirely, and clearing it for one business restarted setup
+ * for all of them. Mock mode has no business slug (single tenant, no field
+ * on the Shutter) and keeps the unscoped key.
+ */
+const STORAGE_PREFIX = "operatoros.onboarding.v1";
+
+function storageKey(): string {
+  const slug = currentBusinessSlug();
+  return slug ? `${STORAGE_PREFIX}.${slug}` : STORAGE_PREFIX;
+}
 
 /**
  * Spec D.2: "Onboarding state is stored server-side so it resumes on any
@@ -19,7 +33,18 @@ const STORAGE_KEY = "operatoros.onboarding.v1";
  */
 function readLocal(): OnboardingState | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const key = storageKey();
+  let raw = window.localStorage.getItem(key);
+  if (raw === null && key !== STORAGE_PREFIX) {
+    // One-time migration off the pre-scoping key: the first business to ask
+    // for it adopts it, then the shared key is retired so the next business
+    // starts its own setup instead of inheriting this one's.
+    raw = window.localStorage.getItem(STORAGE_PREFIX);
+    if (raw !== null) {
+      window.localStorage.setItem(key, raw);
+      window.localStorage.removeItem(STORAGE_PREFIX);
+    }
+  }
   if (!raw) return null;
   try {
     return JSON.parse(raw) as OnboardingState;
@@ -30,7 +55,7 @@ function readLocal(): OnboardingState | null {
 
 function writeLocal(state: OnboardingState) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  window.localStorage.setItem(storageKey(), JSON.stringify(state));
 }
 
 export const EMPTY_ONBOARDING_STATE: OnboardingState = {
@@ -63,5 +88,5 @@ export async function saveOnboardingState(state: OnboardingState): Promise<Onboa
 
 export function resetOnboardingLocal() {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(storageKey());
 }
