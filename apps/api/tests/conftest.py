@@ -32,7 +32,7 @@ from sqlalchemy import create_engine, text
 
 import operatoros_api.db as db_module
 from operatoros_api.main import create_app
-from operatoros_api.models.catalog import Category, Product, Unit
+from operatoros_api.models.catalog import Category, Product
 from operatoros_api.models.customers import Customer
 from operatoros_api.models.day_till import DaySession, TillSession
 from operatoros_api.models.expenses import Expense, RecurringExpense

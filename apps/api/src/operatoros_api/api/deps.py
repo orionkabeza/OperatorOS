@@ -62,7 +62,9 @@ async def get_current_context(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> AsyncIterator[RequestContext]:
-    token = credentials.credentials if credentials else request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+    token = (
+        credentials.credentials if credentials else request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+    )
     if token is None:
         raise HTTPException(status_code=401, detail="Not authenticated.")
     try:

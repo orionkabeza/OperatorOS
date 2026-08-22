@@ -59,7 +59,9 @@ DEFAULT_UNITS: tuple[tuple[str, str], ...] = (
 
 
 async def seed_default_units(session: AsyncSession, *, business_id: str) -> list[Unit]:
-    units = [Unit(business_id=business_id, name=name, symbol=symbol) for name, symbol in DEFAULT_UNITS]
+    units = [
+        Unit(business_id=business_id, name=name, symbol=symbol) for name, symbol in DEFAULT_UNITS
+    ]
     session.add_all(units)
     await session.flush()
     return units
