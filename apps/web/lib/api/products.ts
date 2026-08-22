@@ -1,6 +1,6 @@
 import { minorUnits } from "@operatoros/shared";
 import { addQty, qtyToNumber } from "../decimal";
-import { CATEGORIES, UNITS } from "../mock/seed";
+import { CATEGORIES, LOCATION_ID, LOCATION_NAME, UNITS } from "../mock/seed";
 import { appendStockMovement, getDb, mockDelay } from "../mock/store";
 import { ApiError, apiRequest, getDefaultLocationId, newIdempotencyKey, USE_MOCK_API } from "./config";
 import { schemas } from "./generated/client";
@@ -228,7 +228,7 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
       notes: "",
       reorderPoint: "0",
       reorderQty: "0",
-      locations: [{ locationId: "loc-nyabugogo", locationName: "Nyabugogo branch", onHand: "0", reserved: "0" }],
+      locations: [{ locationId: LOCATION_ID, locationName: LOCATION_NAME, onHand: "0", reserved: "0" }],
       onHand: "0",
       archived: false,
     };
@@ -358,7 +358,7 @@ export async function commitImport(rows: ImportRow[]): Promise<{ created: number
         notes: "",
         reorderPoint: "0",
         reorderQty: "0",
-        locations: [{ locationId: "loc-nyabugogo", locationName: "Nyabugogo branch", onHand: row.openingQty, reserved: "0" }],
+        locations: [{ locationId: LOCATION_ID, locationName: LOCATION_NAME, onHand: row.openingQty, reserved: "0" }],
         onHand: row.openingQty,
         archived: false,
       };

@@ -266,11 +266,13 @@ export async function receiveTransfer(transferId: string, received: { productId:
  * printed the demo branch names ("Nyabugogo", "Kimironko") to a business
  * that has neither. Mode-branching belongs here, not in a component.
  *
- * There is no endpoint that lists a business's locations with their names:
- * `GET /api/v1/stock/locations` returns per-product stock rows (empty for a
- * business with no products), and `GET /api/v1/users/me` gives location ids
- * with no names. So this is honestly unsupported against a real backend
- * rather than guessed at.
+ * This used to be unsupported against a real backend: `GET
+ * /api/v1/stock/locations` returns per-product stock rows (empty for a
+ * business with no products), and `GET /api/v1/users/me` gave location ids
+ * with no names. `MeOut.locations` now carries the names — added for the top
+ * bar, which had the same problem and papered over it with a mock branch —
+ * so this can answer for real. It lists the locations the signed-in user is
+ * assigned to, which is the set they may transfer between.
  */
 export async function listTransferLocations(): Promise<{ id: string; name: string }[]> {
   if (USE_MOCK_API) {
@@ -279,9 +281,8 @@ export async function listTransferLocations(): Promise<{ id: string; name: strin
       { id: LOCATION_ID_2, name: LOCATION_NAME_2 },
     ]);
   }
-  return notSupportedByBackend(
-    "Choosing which locations a transfer moves stock between (no endpoint lists a business's locations by name)",
-  );
+  const me = schemas.MeOut.parse(await apiRequest<unknown>("GET", "/api/v1/users/me"));
+  return me.locations.map((l) => ({ id: l.id, name: l.name }));
 }
 
 /** No `GET /api/v1/stock/transfers` list endpoint exists at all — same gap as `listStocktakes`, only create and get-by-id exist. */

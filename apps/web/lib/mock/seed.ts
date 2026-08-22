@@ -9,6 +9,11 @@ import type { Category, Customer, Product, Unit } from "../api/types";
  * MSW's service-worker mode.
  */
 
+/** The demo shop's name. Lives here, with the rest of the fixture, rather
+ *  than as a default prop on TopNav — where it silently became the name every
+ *  real tenant saw in production. */
+export const BUSINESS_NAME = "Kigali Hardware Supplies";
+
 export const LOCATION_ID = "loc-nyabugogo";
 export const LOCATION_NAME = "Nyabugogo branch";
 export const LOCATION_ID_2 = "loc-kimironko";

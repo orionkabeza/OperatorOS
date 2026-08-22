@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/lib/auth-store";
+import { useIdentity } from "@/lib/queries/identity";
 import { useTillSession } from "@/lib/queries/till";
 import { useTillUiStore } from "@/lib/stores/till-ui-store";
 import type { DaySession } from "@/lib/api/types";
@@ -13,15 +14,21 @@ function elapsedSince(iso: string): string {
   return `${hours}h ${minutes}m`;
 }
 
-/** C.2 — top nav: business + location switcher, global search / ⌘K, day status, notifications, avatar. */
-export function TopNav({
-  businessName = "Kigali Hardware Supplies",
-  dayStatus,
-}: {
-  businessName?: string;
-  dayStatus?: DaySession | undefined;
-}) {
+/**
+ * C.2 — top nav: business + location switcher, global search / ⌘K, day
+ * status, notifications, avatar.
+ *
+ * The business name, branch and avatar initials come from the signed-in
+ * session (lib/api/identity.ts). They used to be literals: `businessName`
+ * defaulted to "Kigali Hardware Supplies" and `ShopFloor` never passed one,
+ * the branch button read "Nyabugogo branch", and the avatar read "AM" —
+ * all three straight out of the mock fixture, so in production every real
+ * tenant had another shop's name and a branch they don't own printed above
+ * their own till.
+ */
+export function TopNav({ dayStatus }: { dayStatus?: DaySession | undefined }) {
   const signOut = useAuthStore((s) => s.signOut);
+  const { data: identity } = useIdentity();
   const { data: tillSession } = useTillSession();
   const requestCloseTill = useTillUiStore((s) => s.requestClose);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -42,14 +49,16 @@ export function TopNav({
     <header className="sticky top-0 z-30 flex h-rail items-center justify-between gap-16 bg-steel px-24">
       <div className="flex min-w-0 items-center gap-12">
         <span className="type-expanded truncate font-display text-table font-bold text-white">
-          {businessName}
+          {identity?.businessName ?? ""}
         </span>
-        <button
-          type="button"
-          className="rounded border border-white/20 px-8 py-4 text-meta text-white/70 hover:border-white/40 hover:text-white"
-        >
-          Nyabugogo branch ▾
-        </button>
+        {identity ? (
+          <button
+            type="button"
+            className="rounded border border-white/20 px-8 py-4 text-meta text-white/70 hover:border-white/40 hover:text-white"
+          >
+            {identity.locationName} ▾
+          </button>
+        ) : null}
       </div>
 
       <div className="hidden flex-1 justify-center md:flex">
@@ -86,9 +95,9 @@ export function TopNav({
           type="button"
           onClick={signOut}
           className="flex h-control-lg w-control-lg items-center justify-center rounded bg-tape text-table font-bold text-ink"
-          title="Sign out"
+          title={identity ? `Sign out — ${identity.displayName}` : "Sign out"}
         >
-          AM
+          {identity?.initials ?? "…"}
         </button>
       </div>
 

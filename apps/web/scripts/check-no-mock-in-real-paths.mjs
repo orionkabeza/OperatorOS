@@ -12,7 +12,7 @@
  * live site, because `USE_MOCK_API` guards the network branch while
  * nothing guarded the *data*.
  *
- * Three rules, checked statically so the next one fails CI instead:
+ * Four rules, checked statically so the next one fails CI instead:
  *
  *   A. Only `lib/api/**` and `lib/mock/**` may import from `lib/mock/`.
  *      UI code reaching into mock data is never correct in production.
@@ -22,6 +22,15 @@
  *      backend by definition. That is exactly what `buildImportPreview`
  *      was, and it is the shape that reaches callers outside this layer.
  *   C. Mock-only identifiers must not appear in real code paths at all.
+ *   D. Nor may the fixture's identity STRINGS, typed out by hand. Rules A–C
+ *      all track imports and identifiers, and `TopNav` defeated every one of
+ *      them by simply typing the values in: `businessName = "Kigali Hardware
+ *      Supplies"` as a default prop `ShopFloor` never overrode, a hard-coded
+ *      "Nyabugogo branch", "AM" for the avatar. No import, no identifier,
+ *      nothing to flag — and every real tenant in production read another
+ *      shop's name above their own till for the whole of Phase 2. The
+ *      literals are read out of `lib/mock/seed.ts` at check time so this
+ *      list cannot drift from the fixture it guards.
  *
  * Known limit of Rule B: module-private helpers are exempt, because they
  * are only reachable through an exported function and flagging them
@@ -31,6 +40,13 @@
  * that needs real call-graph analysis; the exported-function rule covers
  * the boundary that actually leaks to the rest of the app. A check that
  * cries wolf gets switched off, which protects nothing.
+ *
+ * Known limit of Rule D: it covers the fixture's names, not every fixture
+ * value. Short strings cannot be grepped for without drowning the check in
+ * false positives — the "AM" avatar initials that shipped alongside the
+ * business name would match a hundred innocent lines. Names are the values
+ * that identify a tenant to another tenant, which is the damage worth
+ * catching.
  *
  * Run by `npm run lint`, so CI enforces it on every push.
  */
@@ -64,13 +80,41 @@ const IDENTIFIER_ALLOWLIST = ["lib/mock/", "lib/api/", "scripts/"];
 
 const MOCK_IMPORT_ALLOWLIST = ["lib/api/", "lib/mock/"];
 
+/**
+ * Rule D's literals, read from the fixture itself so the guard cannot fall
+ * out of step with what it guards. Only the constants that NAME something —
+ * a shop, a branch, a person — since those are what one tenant seeing
+ * another's data looks like on screen.
+ */
+const NAME_CONSTANTS = ["BUSINESS_NAME", "LOCATION_NAME", "LOCATION_NAME_2", "CURRENT_USER_NAME"];
+
+function mockNameLiterals() {
+  const seed = readFileSync(path.join(ROOT, "lib/mock/seed.ts"), "utf8");
+  const found = [];
+  for (const name of NAME_CONSTANTS) {
+    const match = seed.match(new RegExp(`export const ${name}\\s*=\\s*["']([^"']+)["']`));
+    if (!match) {
+      console.error(`check-no-mock-in-real-paths: ${name} is gone from lib/mock/seed.ts — update NAME_CONSTANTS.`);
+      process.exit(2);
+    }
+    found.push({ name, literal: match[1] });
+  }
+  return found;
+}
+
+const MOCK_NAME_LITERALS = mockNameLiterals();
+
 function listSourceFiles() {
+  // Normalise separators BEFORE filtering. globSync yields "e2e\helpers.ts"
+  // on Windows, where `startsWith("e2e/")` is false -- so the e2e suite was
+  // silently in scope for anyone running lint locally on Windows and out of
+  // scope in CI. Paths first, predicates second.
   return globSync("**/*.{ts,tsx}", { cwd: ROOT })
-    .filter((f) => !f.startsWith("node_modules"))
-    .filter((f) => !f.startsWith(".next"))
+    .map((f) => f.split(path.sep).join("/"))
+    .filter((f) => !f.startsWith("node_modules/"))
+    .filter((f) => !f.startsWith(".next/"))
     .filter((f) => !f.includes(".test."))
-    .filter((f) => !f.startsWith("e2e/"))
-    .map((f) => f.split(path.sep).join("/"));
+    .filter((f) => !f.startsWith("e2e/"));
 }
 
 /**
@@ -149,6 +193,23 @@ for (const file of listSourceFiles()) {
           rule: "C",
           line: idx + 1,
           message: `references ${identifier}, which only has a meaningful value in mock mode.`,
+        });
+      }
+    }
+  }
+
+  // --- Rule D: the fixture's names, typed out by hand ----------------------
+  // Applies to lib/api/ too: that layer may reference the mock constants by
+  // identifier (Rule C exempts it) but has no reason to retype their values.
+  if (!file.startsWith("lib/mock/") && !file.startsWith("scripts/")) {
+    for (const { name, literal } of MOCK_NAME_LITERALS) {
+      const idx = source.split("\n").findIndex((l) => l.includes(literal) && !l.trimStart().startsWith("*"));
+      if (idx !== -1) {
+        violations.push({
+          file,
+          rule: "D",
+          line: idx + 1,
+          message: `hard-codes ${JSON.stringify(literal)}, the mock fixture's ${name}. Real tenants would see it. Source it from the signed-in session (lib/api/identity.ts).`,
         });
       }
     }
